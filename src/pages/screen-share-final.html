@@ -333,7 +333,8 @@
     <script>
         // Global değişkenler
         const socket = io();
-        let roomCode = generateRoomCode();
+        const params = new URLSearchParams(window.location.search);
+        let roomCode = (params.get('room') || localStorage.getItem('lastRoomCode') || generateRoomCode()).toUpperCase();
         let localStream = null;
         let peer = null;
         let isMicOn = false;
@@ -360,6 +361,10 @@
         // Sayfa yüklendiğinde
         window.addEventListener('DOMContentLoaded', () => {
             document.getElementById('roomCode').textContent = roomCode;
+            try { localStorage.setItem('lastRoomCode', roomCode); } catch(e) {}
+            if (!params.get('room')) {
+                try { history.replaceState(null, '', `${window.location.pathname}?room=${roomCode}`); } catch(e) {}
+            }
             socket.emit('join-room', roomCode);
             addMessage('Sistem', 'Odaya katıldınız. Oda kodu: ' + roomCode);
             updateStatus('Hazır - Ekran paylaşımı başlatmak için butona tıklayın', 'success');
@@ -379,16 +384,22 @@
             
             // Socket events
             socket.on('user-joined', (userId) => {
-                addMessage('Sistem', 'Yeni kullanıcı katıldı!');
-                if (localStream && peer) {
-                    // Mevcut stream'i yeni kullanıcıya gönder
+                addMessage('Sistem', 'Yeni kullanıcı katıldı: ' + userId);
+                if (localStream) {
+                    try { if (peer) peer.destroy(); } catch (e) {}
                     initiateCall();
+                } else {
+                    addMessage('Sistem', 'Ekran paylaşımını başlat butonuna basarak yayın başlatın.');
                 }
             });
             
             socket.on('offer', async (offer, senderId) => {
-                addMessage('Sistem', 'Bağlantı kuruluyor...');
-                await handleOffer(offer, senderId);
+                if (!peer) {
+                    addMessage('Sistem', 'Bağlantı kuruluyor...');
+                    await handleOffer(offer, senderId);
+                } else {
+                    try { peer.signal(offer); } catch(e) { console.error(e); }
+                }
             });
             
             socket.on('answer', (answer) => {
@@ -573,6 +584,11 @@
             
             peer.on('stream', (stream) => {
                 remoteVideo.srcObject = stream;
+                try { remoteVideo.muted = false; } catch (e) {}
+                try {
+                    const p = remoteVideo.play && remoteVideo.play();
+                    if (p && typeof p.catch === 'function') p.catch(() => {});
+                } catch (e) {}
                 addMessage('Sistem', '✅ Uzak ekran bağlandı!');
             });
             
@@ -601,6 +617,11 @@
             
             peer.on('stream', (stream) => {
                 remoteVideo.srcObject = stream;
+                try { remoteVideo.muted = false; } catch (e) {}
+                try {
+                    const p = remoteVideo.play && remoteVideo.play();
+                    if (p && typeof p.catch === 'function') p.catch(() => {});
+                } catch (e) {}
                 addMessage('Sistem', '✅ Uzak ekran bağlandı!');
             });
             
