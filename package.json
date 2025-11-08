@@ -1,0 +1,59 @@
+{
+  "name": "dragons-keep",
+  "version": "1.0.0",
+  "description": "Dragon's Keep - Windows Gaming & Screen Sharing Application",
+  "main": "main.js",
+  "homepage": "./",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "concurrently \"npm run server\" \"wait-on http://localhost:3000 && electron .\"",
+    "server": "nodemon server.js",
+    "electron": "electron .",
+    "build": "electron-builder",
+    "build-win": "electron-builder --win",
+    "dist": "npm run build",
+    "pack": "electron-builder --dir"
+  },
+  "build": {
+    "appId": "com.dragonskeep.app",
+    "productName": "Dragon's Keep",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "**/*",
+      "!frontend/node_modules",
+      "!frontend/src",
+      "!frontend/public",
+      "frontend/build/**/*"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "assets/icon.ico",
+      "requestedExecutionLevel": "asInvoker"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "electron-serve": "^1.1.0",
+    "electron-store": "^8.1.0",
+    "express": "^4.18.2",
+    "peer": "^1.0.2",
+    "simple-peer": "^9.11.1",
+    "socket.io": "^4.7.2",
+    "uuid": "^9.0.0"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "electron": "^27.0.0",
+    "electron-builder": "^24.6.4",
+    "nodemon": "^3.0.1",
+    "wait-on": "^7.0.1"
+  }
+}

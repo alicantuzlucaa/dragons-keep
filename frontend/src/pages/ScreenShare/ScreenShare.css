@@ -1,0 +1,124 @@
+.screen-share-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 70vh;
+  padding: 2rem;
+}
+
+.screen-share-card {
+  background: rgba(20, 20, 30, 0.9);
+  border: 2px solid #8b5a2b;
+  border-radius: 10px;
+  padding: 2rem;
+  max-width: 500px;
+  width: 100%;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+  text-align: center;
+}
+
+.screen-share-card h2 {
+  color: #ff9e3f;
+  font-family: 'Uncial Antiqua', cursive;
+  margin-bottom: 1rem;
+  font-size: 2rem;
+}
+
+.screen-share-card p {
+  color: #d4af37;
+  margin-bottom: 2rem;
+  font-size: 1.1rem;
+}
+
+.room-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.form-group {
+  width: 100%;
+}
+
+.form-input {
+  width: 100%;
+  padding: 0.8rem 1rem;
+  border: 1px solid #8b5a2b;
+  border-radius: 5px;
+  background: rgba(0, 0, 0, 0.5);
+  color: #fff;
+  font-size: 1rem;
+  font-family: 'MedievalSharp', cursive;
+  transition: all 0.3s ease;
+}
+
+.form-input:focus {
+  outline: none;
+  border-color: #ff9e3f;
+  box-shadow: 0 0 10px rgba(255, 158, 63, 0.5);
+}
+
+.button-group {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.btn {
+  padding: 0.8rem 1.5rem;
+  border: none;
+  border-radius: 5px;
+  font-family: 'MedievalSharp', cursive;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  text-decoration: none;
+  text-align: center;
+  min-width: 160px;
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, #8b5a2b, #d4af37);
+  color: #fff;
+}
+
+.btn-primary:hover {
+  background: linear-gradient(135deg, #d4af37, #ff9e3f);
+  transform: translateY(-2px);
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+}
+
+.btn-secondary {
+  background: transparent;
+  border: 2px solid #8b5a2b;
+  color: #d4af37;
+}
+
+.btn-secondary:hover {
+  background: rgba(139, 90, 43, 0.2);
+  border-color: #ff9e3f;
+  color: #ff9e3f;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+/* Responsive Design */
+@media (max-width: 600px) {
+  .screen-share-card {
+    padding: 1.5rem;
+  }
+  
+  .button-group {
+    flex-direction: column;
+  }
+  
+  .btn {
+    width: 100%;
+  }
+}

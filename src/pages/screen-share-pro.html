@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ekran Paylaşımı Pro - Dragon's Keep</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=MedievalSharp&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'MedievalSharp', cursive;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: #fff;
+            min-height: 100vh;
+            overflow: hidden;
+        }
+        .home-btn {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            background: rgba(212, 175, 55, 0.9);
+            border: 2px solid #d4af37;
+            color: #000;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.3s;
+            z-index: 1000;
+        }
+        .home-btn:hover {
+            background: #ffd700;
+            transform: scale(1.05);
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        .header {
+            text-align: center;
+            padding: 20px;
+            background: rgba(0,0,0,0.5);
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+        .header h1 {
+            color: #d4af37;
+            font-size: 2rem;
+        }
+        .room-code {
+            background: rgba(255,255,255,0.1);
+            padding: 10px 20px;
+            border-radius: 5px;
+            display: inline-block;
+            margin-top: 10px;
+            font-size: 1.5rem;
+            letter-spacing: 3px;
+        }
+        .main-content {
+            display: flex;
+            gap: 20px;
+            flex: 1;
+            overflow: hidden;
+        }
+        .video-section {
+            flex: 3;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .video-container {
+            position: relative;
+            background: #000;
+            border-radius: 10px;
+            overflow: hidden;
+            flex: 1;
+        }
+        video {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+        .video-label {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(0,0,0,0.7);
+            padding: 5px 10px;
+            border-radius: 5px;
+            font-size: 0.9rem;
+        }
+        .controls {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            padding: 15px;
+            background: rgba(0,0,0,0.5);
+            border-radius: 10px;
+        }
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-family: 'MedievalSharp', cursive;
+            font-size: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.3s;
+        }
+        .btn-primary { background: #d4af37; color: #000; }
+        .btn-primary:hover { background: #ffd700; transform: translateY(-2px); }
+        .btn-danger { background: #e74c3c; color: #fff; }
+        .btn-danger:hover { background: #c0392b; }
+        .btn-success { background: #27ae60; color: #fff; }
+        .btn-success:hover { background: #229954; }
+        .btn.active { background: #27ae60; }
+        .chat-section {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: rgba(0,0,0,0.5);
+            border-radius: 10px;
+            padding: 15px;
+        }
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            margin-bottom: 15px;
+            padding: 10px;
+        }
+        .message {
+            margin-bottom: 10px;
+            padding: 8px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 5px;
+        }
+        .message.system { background: rgba(212,175,55,0.2); }
+        .chat-input {
+            display: flex;
+            gap: 10px;
+        }
+        .chat-input input {
+            flex: 1;
+            padding: 10px;
+            border: none;
+            border-radius: 5px;
+            background: rgba(255,255,255,0.1);
+            color: #fff;
+        }
+        .chat-input button {
+            padding: 10px 20px;
+            background: #d4af37;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            color: #000;
+            font-weight: bold;
+        }
+        .status {
+            text-align: center;
+            padding: 10px;
+            background: rgba(39,174,96,0.3);
+            border-radius: 5px;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+    <a href="/" class="home-btn">
+        <i class="fas fa-home"></i>
+        Ana Menü
+    </a>
+    
+    <div class="container">
+        <div class="header">
+            <h1>🎮 Dragon's Keep - Ekran Paylaşımı Pro</h1>
+            <div class="room-code" id="roomCode">YÜKLENIYOR...</div>
+            <div class="status" id="status">Bağlantı kuruluyor...</div>
+        </div>
+        
+        <div class="main-content">
+            <div class="video-section">
+                <div class="video-container">
+                    <div class="video-label">Ekranım</div>
+                    <video id="localVideo" autoplay muted></video>
+                </div>
+                <div class="video-container">
+                    <div class="video-label">Uzak Ekran</div>
+                    <video id="remoteVideo" autoplay></video>
+                </div>
+                
+                <div class="controls">
+                    <button class="btn btn-primary" id="shareScreenBtn">
+                        <i class="fas fa-desktop"></i> Ekran Paylaş
+                    </button>
+                    <button class="btn btn-primary" id="toggleMicBtn">
+                        <i class="fas fa-microphone"></i> Mikrofon
+                    </button>
+                    <button class="btn btn-primary" id="toggleCameraBtn">
+                        <i class="fas fa-video"></i> Kamera
+                    </button>
+                    <button class="btn btn-danger" id="endCallBtn">
+                        <i class="fas fa-phone-slash"></i> Aramayı Bitir
+                    </button>
+                </div>
+            </div>
+            
+            <div class="chat-section">
+                <h3 style="margin-bottom: 10px;">💬 Chat</h3>
+                <div class="chat-messages" id="chatMessages"></div>
+                <div class="chat-input">
+                    <input type="text" id="chatInput" placeholder="Mesaj yazın..." maxlength="200">
+                    <button id="sendBtn">Gönder</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // PeerJS ve Socket.IO ile profesyonel ekran paylaşımı
+        const socket = io();
+        let peer = null;
+        let localStream = null;
+        let remoteStream = null;
+        let currentCall = null;
+        let roomCode = generateRoomCode();
+        let isMicOn = true;
+        let isCameraOn = false;
+        let isScreenSharing = false;
+        
+        // DOM elements
+        const localVideo = document.getElementById('localVideo');
+        const remoteVideo = document.getElementById('remoteVideo');
+        const shareScreenBtn = document.getElementById('shareScreenBtn');
+        const toggleMicBtn = document.getElementById('toggleMicBtn');
+        const toggleCameraBtn = document.getElementById('toggleCameraBtn');
+        const endCallBtn = document.getElementById('endCallBtn');
+        const chatMessages = document.getElementById('chatMessages');
+        const chatInput = document.getElementById('chatInput');
+        const sendBtn = document.getElementById('sendBtn');
+        const statusDiv = document.getElementById('status');
+        
+        function generateRoomCode() {
+            return Math.random().toString(36).substring(2, 8).toUpperCase();
+        }
+        
+        // Initialize
+        window.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('roomCode').textContent = roomCode;
+            initializePeer();
+            setupEventListeners();
+            addMessage('Sistem', 'Hoş geldiniz! Ekran paylaşımı için butona tıklayın.');
+        });
+        
+        function initializePeer() {
+            peer = new Peer(roomCode, {
+                host: window.location.hostname,
+                port: window.location.port || 443,
+                path: '/peerjs',
+                config: {
+                    iceServers: [
+                        { urls: 'stun:stun.l.google.com:19302' },
+                        { urls: 'stun:stun1.l.google.com:19302' },
+                        { urls: 'stun:stun2.l.google.com:19302' }
+                    ]
+                }
+            });
+            
+            peer.on('open', (id) => {
+                updateStatus('Bağlantı hazır! Oda kodu: ' + roomCode, 'success');
+                socket.emit('join-room', roomCode);
+            });
+            
+            peer.on('call', (call) => {
+                addMessage('Sistem', 'Gelen arama...');
+                
+                // Mevcut stream varsa kullan, yoksa boş stream oluştur
+                if (localStream) {
+                    call.answer(localStream);
+                } else {
+                    // Boş stream oluştur
+                    const emptyStream = new MediaStream();
+                    call.answer(emptyStream);
+                }
+                
+                call.on('stream', (stream) => {
+                    remoteVideo.srcObject = stream;
+                    remoteStream = stream;
+                    addMessage('Sistem', 'Uzak ekran bağlandı!');
+                    updateStatus('Bağlı - Ekran paylaşımı aktif', 'success');
+                });
+                
+                currentCall = call;
+            });
+            
+            peer.on('error', (err) => {
+                console.error('Peer error:', err);
+                updateStatus('Hata: ' + err.message, 'error');
+            });
+        }
+        
+        function setupEventListeners() {
+            shareScreenBtn.addEventListener('click', toggleScreenShare);
+            toggleMicBtn.addEventListener('click', toggleMicrophone);
+            toggleCameraBtn.addEventListener('click', toggleCamera);
+            endCallBtn.addEventListener('click', endCall);
+            sendBtn.addEventListener('click', sendMessage);
+            chatInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') sendMessage();
+            });
+            
+            socket.on('user-joined', (userId) => {
+                addMessage('Sistem', 'Yeni kullanıcı katıldı');
+                // Eğer stream varsa, yeni kullanıcıya gönder
+                if (localStream) {
+                    const call = peer.call(userId, localStream);
+                    call.on('stream', (stream) => {
+                        remoteVideo.srcObject = stream;
+                    });
+                }
+            });
+            
+            socket.on('chat-message', (msg) => {
+                addMessage('Uzak', msg);
+            });
+        }
+        
+        async function toggleScreenShare() {
+            if (!isScreenSharing) {
+                try {
+                    // Ekran + ses paylaşımı
+                    const screenStream = await navigator.mediaDevices.getDisplayMedia({
+                        video: {
+                            cursor: 'always',
+                            displaySurface: 'monitor'
+                        },
+                        audio: {
+                            echoCancellation: true,
+                            noiseSuppression: true,
+                            sampleRate: 44100
+                        }
+                    });
+                    
+                    // Mikrofon sesi ekle
+                    if (isMicOn) {
+                        const audioStream = await navigator.mediaDevices.getUserMedia({
+                            audio: {
+                                echoCancellation: true,
+                                noiseSuppression: true,
+                                autoGainControl: true
+                            }
+                        });
+                        
+                        // Ekran sesi + mikrofon sesini birleştir
+                        const audioContext = new AudioContext();
+                        const destination = audioContext.createMediaStreamDestination();
+                        
+                        // Ekran sesi
+                        if (screenStream.getAudioTracks().length > 0) {
+                            const screenAudio = audioContext.createMediaStreamSource(screenStream);
+                            screenAudio.connect(destination);
+                        }
+                        
+                        // Mikrofon sesi
+                        const micAudio = audioContext.createMediaStreamSource(audioStream);
+                        micAudio.connect(destination);
+                        
+                        // Video + birleştirilmiş ses
+                        localStream = new MediaStream([
+                            ...screenStream.getVideoTracks(),
+                            ...destination.stream.getAudioTracks()
+                        ]);
+                    } else {
+                        localStream = screenStream;
+                    }
+                    
+                    localVideo.srcObject = localStream;
+                    isScreenSharing = true;
+                    shareScreenBtn.textContent = '⏹️ Paylaşımı Durdur';
+                    shareScreenBtn.classList.add('active');
+                    
+                    // Ekran paylaşımı durduğunda
+                    screenStream.getVideoTracks()[0].onended = () => {
+                        stopScreenShare();
+                    };
+                    
+                    addMessage('Sistem', 'Ekran paylaşımı başlatıldı!');
+                    updateStatus('Ekran paylaşılıyor...', 'success');
+                    
+                    // Diğer kullanıcılara gönder
+                    socket.emit('request-peers', roomCode);
+                    
+                } catch (err) {
+                    console.error('Ekran paylaşım hatası:', err);
+                    addMessage('Sistem', 'Hata: ' + err.message);
+                    updateStatus('Ekran paylaşımı başarısız', 'error');
+                }
+            } else {
+                stopScreenShare();
+            }
+        }
+        
+        function stopScreenShare() {
+            if (localStream) {
+                localStream.getTracks().forEach(track => track.stop());
+                localStream = null;
+            }
+            localVideo.srcObject = null;
+            isScreenSharing = false;
+            shareScreenBtn.textContent = '🖥️ Ekran Paylaş';
+            shareScreenBtn.classList.remove('active');
+            addMessage('Sistem', 'Ekran paylaşımı durduruldu');
+            updateStatus('Hazır', 'success');
+        }
+        
+        async function toggleMicrophone() {
+            isMicOn = !isMicOn;
+            toggleMicBtn.classList.toggle('active', isMicOn);
+            toggleMicBtn.innerHTML = isMicOn ? 
+                '<i class="fas fa-microphone"></i> Mikrofon' : 
+                '<i class="fas fa-microphone-slash"></i> Mikrofon Kapalı';
+            
+            if (localStream) {
+                localStream.getAudioTracks().forEach(track => {
+                    track.enabled = isMicOn;
+                });
+            }
+            
+            addMessage('Sistem', `Mikrofon ${isMicOn ? 'açıldı' : 'kapatıldı'}`);
+        }
+        
+        async function toggleCamera() {
+            isCameraOn = !isCameraOn;
+            toggleCameraBtn.classList.toggle('active', isCameraOn);
+            toggleCameraBtn.innerHTML = isCameraOn ? 
+                '<i class="fas fa-video"></i> Kamera' : 
+                '<i class="fas fa-video-slash"></i> Kamera Kapalı';
+            
+            if (isCameraOn) {
+                try {
+                    const cameraStream = await navigator.mediaDevices.getUserMedia({ video: true });
+                    // Kamera stream'ini ekle
+                } catch (err) {
+                    addMessage('Sistem', 'Kamera erişim hatası: ' + err.message);
+                }
+            }
+            
+            addMessage('Sistem', `Kamera ${isCameraOn ? 'açıldı' : 'kapatıldı'}`);
+        }
+        
+        function endCall() {
+            stopScreenShare();
+            if (currentCall) {
+                currentCall.close();
+            }
+            if (remoteStream) {
+                remoteStream.getTracks().forEach(track => track.stop());
+            }
+            remoteVideo.srcObject = null;
+            addMessage('Sistem', 'Arama sonlandırıldı');
+            updateStatus('Arama bitti', 'error');
+        }
+        
+        function sendMessage() {
+            const msg = chatInput.value.trim();
+            if (msg) {
+                addMessage('Siz', msg);
+                socket.emit('send-chat', roomCode, msg);
+                chatInput.value = '';
+            }
+        }
+        
+        function addMessage(sender, text) {
+            const div = document.createElement('div');
+            div.className = sender === 'Sistem' ? 'message system' : 'message';
+            div.innerHTML = `<strong>${sender}:</strong> ${text}`;
+            chatMessages.appendChild(div);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+        
+        function updateStatus(text, type) {
+            statusDiv.textContent = text;
+            statusDiv.style.background = type === 'success' ? 'rgba(39,174,96,0.3)' : 
+                                        type === 'error' ? 'rgba(231,76,60,0.3)' : 
+                                        'rgba(212,175,55,0.3)';
+        }
+        
+        // Sayfa kapatılırken temizlik
+        window.addEventListener('beforeunload', () => {
+            if (peer) peer.destroy();
+            if (localStream) localStream.getTracks().forEach(track => track.stop());
+        });
+    </script>
+</body>
+</html>

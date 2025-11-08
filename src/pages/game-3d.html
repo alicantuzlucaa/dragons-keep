@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dragon's Keep - 3D RPG</title>
+    <script src="https://cdn.babylonjs.com/babylon.js"></script>
+    <script src="https://cdn.babylonjs.com/loaders/babylonjs.loaders.min.js"></script>
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        html, body {
+            overflow: hidden;
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            padding: 0;
+        }
+        #renderCanvas {
+            width: 100%;
+            height: 100%;
+            touch-action: none;
+        }
+        #ui {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            font-family: Arial;
+            background: rgba(0,0,0,0.7);
+            padding: 15px;
+            border-radius: 10px;
+            pointer-events: none;
+        }
+        .stat-bar {
+            width: 200px;
+            height: 20px;
+            background: #333;
+            margin: 5px 0;
+            border-radius: 5px;
+            overflow: hidden;
+        }
+        .hp-fill { background: linear-gradient(90deg, #ff4444, #ff6666); height: 100%; }
+        .mp-fill { background: linear-gradient(90deg, #4444ff, #6666ff); height: 100%; }
+        .skills {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            display: flex;
+            gap: 10px;
+        }
+        .skill {
+            width: 50px;
+            height: 50px;
+            background: rgba(0,0,0,0.8);
+            border: 2px solid #d4af37;
+            border-radius: 8px;
+            color: #d4af37;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div id="ui">
+        <div>HP: <span id="hpText">100/100</span></div>
+        <div class="stat-bar"><div class="hp-fill" id="hpBar" style="width: 100%"></div></div>
+        <div>MP: <span id="mpText">50/50</span></div>
+        <div class="stat-bar"><div class="mp-fill" id="mpBar" style="width: 100%"></div></div>
+        <div>Level: <span id="levelText">1</span> | XP: <span id="xpText">0/100</span></div>
+    </div>
+    <div class="skills">
+        <div class="skill" title="Saldırı (Q)">⚔️</div>
+        <div class="skill" title="İyileştirme (W)">❤️</div>
+        <div class="skill" title="Ateş (E)">🔥</div>
+        <div class="skill" title="Kalkan (R)">🛡️</div>
+    </div>
+    <canvas id="renderCanvas"></canvas>
+    <script>
+        const canvas = document.getElementById("renderCanvas");
+        const engine = new BABYLON.Engine(canvas, true);
+        
+        // Game state
+        let player = null;
+        let keys = {};
+        const playerSpeed = 0.2;
+        let monsters = [];
+        let playerStats = { hp: 100, maxHp: 100, mp: 50, maxMp: 50, level: 1, xp: 0, maxXp: 100 };
+
+        const createScene = function () {
+            const scene = new BABYLON.Scene(engine);
+            
+            // Camera
+            const camera = new BABYLON.ArcRotateCamera("camera", -Math.PI / 2, Math.PI / 2.5, 15, new BABYLON.Vector3(0, 0, 0));
+            camera.attachControl(canvas, true);
+            camera.lowerRadiusLimit = 5;
+            camera.upperRadiusLimit = 25;
+            
+            // Light
+            const light = new BABYLON.HemisphericLight("light", new BABYLON.Vector3(0, 1, 0));
+            
+            // Ground
+            const ground = BABYLON.MeshBuilder.CreateGround("ground", {width: 100, height: 100});
+            ground.material = new BABYLON.StandardMaterial("groundMat");
+            ground.material.diffuseColor = new BABYLON.Color3(0.3, 0.6, 0.3);
+            
+            // Player
+            player = BABYLON.MeshBuilder.CreateSphere("player", {diameter: 2});
+            player.position.y = 1;
+            player.material = new BABYLON.StandardMaterial("playerMat");
+            player.material.diffuseColor = new BABYLON.Color3(1, 0.5, 0);
+            
+            // Camera follows player
+            camera.lockedTarget = player;
+            
+            // Keyboard controls
+            window.addEventListener('keydown', (e) => { 
+                keys[e.code] = true;
+                if (e.code === 'KeyQ') useSkill('attack');
+                if (e.code === 'KeyW') useSkill('heal');
+                if (e.code === 'KeyE') useSkill('fireball');
+                if (e.code === 'KeyR') useSkill('shield');
+            });
+            window.addEventListener('keyup', (e) => { keys[e.code] = false; });
+            
+            // Trees
+            for (let i = 0; i < 10; i++) {
+                const tree = BABYLON.MeshBuilder.CreateCylinder("tree", {height: 5, diameter: 1});
+                tree.position.x = Math.random() * 80 - 40;
+                tree.position.z = Math.random() * 80 - 40;
+                tree.position.y = 2.5;
+                tree.material = new BABYLON.StandardMaterial("treeMat");
+                tree.material.diffuseColor = new BABYLON.Color3(0.5, 0.3, 0.1);
+                
+                const leaves = BABYLON.MeshBuilder.CreateSphere("leaves", {diameter: 4});
+                leaves.position = tree.position.clone();
+                leaves.position.y = 5;
+                leaves.material = new BABYLON.StandardMaterial("leavesMat");
+                leaves.material.diffuseColor = new BABYLON.Color3(0.1, 0.6, 0.1);
+            }
+            
+            // Spawn monsters
+            for (let i = 0; i < 5; i++) {
+                const monsterType = ['slime', 'goblin', 'orc'][Math.floor(Math.random() * 3)];
+                const monster = createMonster(scene, monsterType);
+                const angle = Math.random() * Math.PI * 2;
+                const distance = 15 + Math.random() * 20;
+                monster.position.x = Math.cos(angle) * distance;
+                monster.position.z = Math.sin(angle) * distance;
+                monsters.push({mesh: monster, type: monsterType, hp: 100, speed: 0.05});
+            }
+            
+            return scene;
+        };
+        
+        function createMonster(scene, type) {
+            let monster;
+            
+            if (type === 'slime') {
+                monster = BABYLON.MeshBuilder.CreateSphere("slime", {diameter: 2});
+                monster.scaling.y = 0.7;
+                monster.position.y = 0.7;
+                const mat = new BABYLON.StandardMaterial("slimeMat", scene);
+                mat.diffuseColor = new BABYLON.Color3(0.2, 0.8, 0.2);
+                mat.alpha = 0.8;
+                monster.material = mat;
+            } else if (type === 'goblin') {
+                monster = BABYLON.MeshBuilder.CreateBox("goblin", {size: 1.5});
+                monster.position.y = 0.75;
+                const mat = new BABYLON.StandardMaterial("goblinMat", scene);
+                mat.diffuseColor = new BABYLON.Color3(0.5, 0.9, 0.5);
+                monster.material = mat;
+            } else {
+                monster = BABYLON.MeshBuilder.CreateBox("orc", {size: 2});
+                monster.position.y = 1;
+                const mat = new BABYLON.StandardMaterial("orcMat", scene);
+                mat.diffuseColor = new BABYLON.Color3(0.3, 0.5, 0.3);
+                monster.material = mat;
+            }
+            
+            return monster;
+        }
+
+        const scene = createScene();
+        
+        // Update player movement
+        function updatePlayer() {
+            if (!player) return;
+            
+            if (keys['KeyW'] || keys['ArrowUp']) {
+                player.position.z += playerSpeed;
+            }
+            if (keys['KeyS'] || keys['ArrowDown']) {
+                player.position.z -= playerSpeed;
+            }
+            if (keys['KeyA'] || keys['ArrowLeft']) {
+                player.position.x -= playerSpeed;
+            }
+            if (keys['KeyD'] || keys['ArrowRight']) {
+                player.position.x += playerSpeed;
+            }
+        }
+        
+        // Update monsters - AI to follow player
+        function updateMonsters() {
+            monsters.forEach(monster => {
+                const dx = player.position.x - monster.mesh.position.x;
+                const dz = player.position.z - monster.mesh.position.z;
+                const distance = Math.sqrt(dx * dx + dz * dz);
+                
+                if (distance < 20 && distance > 2) {
+                    monster.mesh.position.x += (dx / distance) * monster.speed;
+                    monster.mesh.position.z += (dz / distance) * monster.speed;
+                    monster.mesh.lookAt(player.position);
+                }
+            });
+        }
+        
+        // Use skill
+        function useSkill(skillName) {
+            if (skillName === 'attack') {
+                attackNearestMonster();
+            } else if (skillName === 'heal' && playerStats.mp >= 10) {
+                playerStats.hp = Math.min(playerStats.maxHp, playerStats.hp + 20);
+                playerStats.mp -= 10;
+                updateUI();
+            } else if (skillName === 'fireball' && playerStats.mp >= 15) {
+                attackNearestMonster(30);
+                playerStats.mp -= 15;
+                updateUI();
+            } else if (skillName === 'shield' && playerStats.mp >= 5) {
+                playerStats.mp -= 5;
+                updateUI();
+            }
+        }
+        
+        function attackNearestMonster(damage = 10) {
+            let nearest = null;
+            let minDist = Infinity;
+            
+            monsters.forEach(monster => {
+                const dx = player.position.x - monster.mesh.position.x;
+                const dz = player.position.z - monster.mesh.position.z;
+                const dist = Math.sqrt(dx * dx + dz * dz);
+                if (dist < minDist && dist < 5) {
+                    minDist = dist;
+                    nearest = monster;
+                }
+            });
+            
+            if (nearest) {
+                nearest.hp -= damage;
+                if (nearest.hp <= 0) {
+                    nearest.mesh.dispose();
+                    monsters = monsters.filter(m => m !== nearest);
+                    playerStats.xp += 25;
+                    if (playerStats.xp >= playerStats.maxXp) {
+                        playerStats.level++;
+                        playerStats.xp = 0;
+                        playerStats.maxHp += 20;
+                        playerStats.maxMp += 10;
+                        playerStats.hp = playerStats.maxHp;
+                        playerStats.mp = playerStats.maxMp;
+                    }
+                    updateUI();
+                }
+            }
+        }
+        
+        function updateUI() {
+            document.getElementById('hpText').textContent = `${Math.floor(playerStats.hp)}/${playerStats.maxHp}`;
+            document.getElementById('mpText').textContent = `${Math.floor(playerStats.mp)}/${playerStats.maxMp}`;
+            document.getElementById('levelText').textContent = playerStats.level;
+            document.getElementById('xpText').textContent = `${playerStats.xp}/${playerStats.maxXp}`;
+            document.getElementById('hpBar').style.width = `${(playerStats.hp / playerStats.maxHp) * 100}%`;
+            document.getElementById('mpBar').style.width = `${(playerStats.mp / playerStats.maxMp) * 100}%`;
+        }
+
+        engine.runRenderLoop(function () {
+            updatePlayer();
+            updateMonsters();
+            scene.render();
+        });
+
+        window.addEventListener("resize", function () {
+            engine.resize();
+        });
+    </script>
+</body>
+</html>

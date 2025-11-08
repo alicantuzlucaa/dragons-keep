@@ -1,0 +1,1918 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dragon's Keep - Zenonia RPG</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=MedievalSharp&family=Uncial+Antiqua&display=swap" rel="stylesheet">
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'MedievalSharp', cursive;
+            background: #000;
+            color: #fff;
+            overflow: hidden;
+            cursor: none;
+        }
+
+        /* Game Container */
+        .game-container {
+            width: 100vw;
+            height: 100vh;
+            position: relative;
+            background: linear-gradient(45deg, #1a1a2e, #16213e);
+        }
+
+        /* 3D Game Canvas */
+        #gameCanvas {
+            display: block;
+            background: linear-gradient(to bottom, #87CEEB 0%, #98FB98 100%);
+            cursor: none;
+        }
+
+        /* Game UI Overlay */
+        .game-ui {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 100;
+        }
+
+        /* Top HUD */
+        .top-hud {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            right: 10px;
+            display: flex;
+            justify-content: space-between;
+            pointer-events: auto;
+        }
+
+        .player-info {
+            background: rgba(0, 0, 0, 0.8);
+            border: 2px solid #8b5a2b;
+            border-radius: 10px;
+            padding: 10px 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .player-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: #8b5a2b;
+            border: 2px solid #d4af37;
+        }
+
+        .player-stats {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .stat-bar {
+            width: 120px;
+            height: 8px;
+            background: rgba(0, 0, 0, 0.5);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .stat-fill {
+            height: 100%;
+            transition: width 0.3s ease;
+        }
+
+        .hp-fill { background: linear-gradient(90deg, #ff4444, #ff6666); }
+        .mp-fill { background: linear-gradient(90deg, #4444ff, #6666ff); }
+        .exp-fill { background: linear-gradient(90deg, #44ff44, #66ff66); }
+
+        .stat-text {
+            font-size: 0.7rem;
+            color: #d4af37;
+            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+        }
+
+        /* Chat System */
+        .chat-container {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            width: 300px;
+            height: 200px;
+            background: rgba(0, 0, 0, 0.8);
+            border: 2px solid #8b5a2b;
+            border-radius: 10px;
+            display: flex;
+            flex-direction: column;
+            pointer-events: auto;
+        }
+
+        .chat-messages {
+            flex: 1;
+            padding: 10px;
+            overflow-y: auto;
+            font-size: 0.8rem;
+        }
+
+        .chat-input {
+            display: flex;
+            padding: 5px;
+            border-top: 1px solid #8b5a2b;
+        }
+
+        .chat-input input {
+            flex: 1;
+            background: rgba(0, 0, 0, 0.5);
+            border: 1px solid #8b5a2b;
+            color: #fff;
+            padding: 5px;
+            border-radius: 3px;
+            font-family: 'MedievalSharp', cursive;
+            font-size: 0.8rem;
+        }
+
+        /* Inventory Panel */
+        .inventory-panel {
+            position: absolute;
+            top: 50%;
+            right: 10px;
+            transform: translateY(-50%);
+            width: 200px;
+            background: rgba(0, 0, 0, 0.9);
+            border: 2px solid #8b5a2b;
+            border-radius: 10px;
+            padding: 10px;
+            display: none;
+            pointer-events: auto;
+        }
+
+        .inventory-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 5px;
+        }
+
+        .inventory-slot {
+            width: 40px;
+            height: 40px;
+            background: rgba(139, 90, 43, 0.3);
+            border: 1px solid #8b5a2b;
+            border-radius: 5px;
+            cursor: pointer;
+            position: relative;
+        }
+
+        .inventory-slot:hover {
+            background: rgba(212, 175, 55, 0.3);
+        }
+
+        /* Skills Panel */
+        .skills-panel {
+            position: absolute;
+            bottom: 10px;
+            right: 10px;
+            display: flex;
+            gap: 5px;
+            pointer-events: auto;
+        }
+
+        .skill-slot {
+            width: 50px;
+            height: 50px;
+            background: rgba(0, 0, 0, 0.8);
+            border: 2px solid #8b5a2b;
+            border-radius: 8px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.2rem;
+            color: #d4af37;
+            transition: all 0.2s ease;
+        }
+
+        .skill-slot:hover {
+            border-color: #d4af37;
+            background: rgba(212, 175, 55, 0.2);
+        }
+
+        .skill-slot.cooldown {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        /* Menu Button */
+        .menu-button {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: rgba(0, 0, 0, 0.8);
+            border: 2px solid #8b5a2b;
+            color: #d4af37;
+            padding: 10px;
+            border-radius: 5px;
+            cursor: pointer;
+            pointer-events: auto;
+            font-family: 'MedievalSharp', cursive;
+        }
+
+        .menu-button:hover {
+            background: rgba(212, 175, 55, 0.2);
+        }
+
+        /* Loading Screen */
+        .loading-screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(45deg, #1a1a2e, #16213e);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+
+        .loading-title {
+            font-family: 'Uncial Antiqua', cursive;
+            font-size: 3rem;
+            color: #d4af37;
+            text-shadow: 0 0 20px rgba(212, 175, 55, 0.5);
+            margin-bottom: 2rem;
+        }
+
+        .loading-bar {
+            width: 300px;
+            height: 10px;
+            background: rgba(0, 0, 0, 0.5);
+            border-radius: 5px;
+            overflow: hidden;
+            margin-bottom: 1rem;
+        }
+
+        .loading-progress {
+            height: 100%;
+            background: linear-gradient(90deg, #8b5a2b, #d4af37);
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+
+        .loading-text {
+            color: #ffd700;
+            font-size: 1.2rem;
+        }
+
+        /* Fullscreen styles */
+        .fullscreen {
+            position: fixed !important;
+            top: 0 !important;
+            left: 0 !important;
+            width: 100vw !important;
+            height: 100vh !important;
+            z-index: 9999 !important;
+        }
+
+        /* Custom cursor */
+        .custom-cursor {
+            position: absolute;
+            width: 32px;
+            height: 32px;
+            background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%23d4af37"><path d="M12 2L15.09 8.26L22 9L17 14L18.18 21L12 17.77L5.82 21L7 14L2 9L8.91 8.26L12 2Z"/></svg>') no-repeat center;
+            background-size: contain;
+            pointer-events: none;
+            z-index: 10000;
+        }
+
+        /* Responsive adjustments */
+        @media (max-width: 768px) {
+            .chat-container {
+                width: 250px;
+                height: 150px;
+            }
+            
+            .player-info {
+                padding: 5px 10px;
+            }
+            
+            .stat-bar {
+                width: 80px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container" id="gameContainer">
+        <!-- Loading Screen -->
+        <div class="loading-screen" id="loadingScreen">
+            <h1 class="loading-title">Dragon's Keep</h1>
+            <div class="loading-bar">
+                <div class="loading-progress" id="loadingProgress"></div>
+            </div>
+            <div class="loading-text" id="loadingText">Oyun yükleniyor...</div>
+        </div>
+
+        <!-- Game Canvas -->
+        <canvas id="gameCanvas"></canvas>
+
+        <!-- Game UI Overlay -->
+        <div class="game-ui">
+            <!-- Top HUD -->
+            <div class="top-hud">
+                <div class="player-info">
+                    <div class="player-avatar" id="playerAvatar"></div>
+                    <div class="player-stats">
+                        <div class="stat-text">HP: <span id="hpText">100/100</span></div>
+                        <div class="stat-bar">
+                            <div class="stat-fill hp-fill" id="hpBar" style="width: 100%;"></div>
+                        </div>
+                        <div class="stat-text">MP: <span id="mpText">50/50</span></div>
+                        <div class="stat-bar">
+                            <div class="stat-fill mp-fill" id="mpBar" style="width: 100%;"></div>
+                        </div>
+                        <div class="stat-text">LVL: <span id="levelText">1</span> | EXP: <span id="expText">0/100</span></div>
+                        <div class="stat-bar">
+                            <div class="stat-fill exp-fill" id="expBar" style="width: 0%;"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <button class="menu-button" id="menuButton">
+                    <i class="fas fa-bars"></i> Menü
+                </button>
+            </div>
+
+            <!-- Chat Container -->
+            <div class="chat-container">
+                <div class="chat-messages" id="chatMessages"></div>
+                <div class="chat-input">
+                    <input type="text" id="chatInput" placeholder="Mesaj yazın..." maxlength="100">
+                </div>
+            </div>
+
+            <!-- Skills Panel -->
+            <div class="skills-panel">
+                <div class="skill-slot" data-skill="attack" title="Saldırı (Q)">
+                    <i class="fas fa-sword"></i>
+                </div>
+                <div class="skill-slot" data-skill="heal" title="İyileştirme (W)">
+                    <i class="fas fa-heart"></i>
+                </div>
+                <div class="skill-slot" data-skill="fireball" title="Ateş Topu (E)">
+                    <i class="fas fa-fire"></i>
+                </div>
+                <div class="skill-slot" data-skill="shield" title="Kalkan (R)">
+                    <i class="fas fa-shield-alt"></i>
+                </div>
+            </div>
+
+            <!-- Inventory Panel -->
+            <div class="inventory-panel" id="inventoryPanel">
+                <h3 style="color: #d4af37; margin-bottom: 10px;">Envanter</h3>
+                <div class="inventory-grid" id="inventoryGrid">
+                    <!-- Inventory slots will be generated by JavaScript -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Custom Cursor -->
+        <div class="custom-cursor" id="customCursor"></div>
+    </div>
+
+    <script>
+        // 3D Game Engine Core
+        class DragonKeepRPG3D {
+            constructor() {
+                this.container = document.getElementById('gameContainer');
+                this.socket = io();
+                
+                // Three.js setup
+                this.scene = new THREE.Scene();
+                this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+                this.renderer = new THREE.WebGLRenderer({ antialias: true });
+                this.controls = null;
+                
+                // Game state
+                this.gameState = 'loading';
+                this.players = new Map();
+                this.currentPlayer = null;
+                this.world = null;
+                this.camera = { x: 0, y: 0 };
+                this.monsters = new Map();
+                this.projectiles = [];
+                
+                // Input handling
+                this.keys = {};
+                this.mousePos = { x: 0, y: 0 };
+                
+                // Game settings
+                this.tileSize = 32;
+                this.viewportWidth = 0;
+                this.viewportHeight = 0;
+                
+                this.init();
+            }
+
+            async init() {
+                this.setup3DScene();
+                this.setupEventListeners();
+                this.setupUI();
+                await this.loadAssets();
+                this.setupNetworking();
+                this.startGameLoop();
+            }
+
+            setup3DScene() {
+                // Renderer setup
+                this.renderer.setSize(window.innerWidth, window.innerHeight);
+                this.renderer.shadowMap.enabled = true;
+                this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+                this.renderer.setClearColor(0x87CEEB);
+                
+                // Add renderer to DOM
+                const canvas = document.getElementById('gameCanvas');
+                canvas.parentNode.replaceChild(this.renderer.domElement, canvas);
+                this.renderer.domElement.id = 'gameCanvas';
+                
+                // Camera position (third-person view)
+                this.camera.position.set(0, 10, 10);
+                this.camera.lookAt(0, 0, 0);
+                
+                // Lighting setup
+                this.setupLighting();
+                
+                // Create world
+                this.create3DWorld();
+            }
+
+            setupLighting() {
+                // Ambient light
+                const ambientLight = new THREE.AmbientLight(0x404040, 0.6);
+                this.scene.add(ambientLight);
+                
+                // Directional light (sun)
+                const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+                directionalLight.position.set(50, 50, 50);
+                directionalLight.castShadow = true;
+                directionalLight.shadow.mapSize.width = 2048;
+                directionalLight.shadow.mapSize.height = 2048;
+                directionalLight.shadow.camera.near = 0.5;
+                directionalLight.shadow.camera.far = 500;
+                directionalLight.shadow.camera.left = -50;
+                directionalLight.shadow.camera.right = 50;
+                directionalLight.shadow.camera.top = 50;
+                directionalLight.shadow.camera.bottom = -50;
+                this.scene.add(directionalLight);
+            }
+
+            create3DWorld() {
+                // Ground plane
+                const groundGeometry = new THREE.PlaneGeometry(200, 200);
+                const groundMaterial = new THREE.MeshLambertMaterial({ color: 0x3d5a32 });
+                const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+                ground.rotation.x = -Math.PI / 2;
+                ground.receiveShadow = true;
+                this.scene.add(ground);
+                
+                // Add some 3D trees
+                this.create3DTrees();
+                
+                // Add 3D rocks
+                this.create3DRocks();
+            }
+
+            create3DTrees() {
+                for (let i = 0; i < 20; i++) {
+                    const tree = this.create3DTree();
+                    tree.position.x = (Math.random() - 0.5) * 180;
+                    tree.position.z = (Math.random() - 0.5) * 180;
+                    this.scene.add(tree);
+                }
+            }
+
+            create3DTree() {
+                const treeGroup = new THREE.Group();
+                
+                // Trunk
+                const trunkGeometry = new THREE.CylinderGeometry(0.5, 0.8, 4, 8);
+                const trunkMaterial = new THREE.MeshLambertMaterial({ color: 0x8B4513 });
+                const trunk = new THREE.Mesh(trunkGeometry, trunkMaterial);
+                trunk.position.y = 2;
+                trunk.castShadow = true;
+                treeGroup.add(trunk);
+                
+                // Crown
+                const crownGeometry = new THREE.SphereGeometry(3, 8, 6);
+                const crownMaterial = new THREE.MeshLambertMaterial({ color: 0x228B22 });
+                const crown = new THREE.Mesh(crownGeometry, crownMaterial);
+                crown.position.y = 5;
+                crown.castShadow = true;
+                treeGroup.add(crown);
+                
+                return treeGroup;
+            }
+
+            create3DRocks() {
+                for (let i = 0; i < 15; i++) {
+                    const rock = this.create3DRock();
+                    rock.position.x = (Math.random() - 0.5) * 180;
+                    rock.position.z = (Math.random() - 0.5) * 180;
+                    this.scene.add(rock);
+                }
+            }
+
+            create3DRock() {
+                const rockGeometry = new THREE.DodecahedronGeometry(Math.random() * 2 + 1);
+                const rockMaterial = new THREE.MeshLambertMaterial({ color: 0x696969 });
+                const rock = new THREE.Mesh(rockGeometry, rockMaterial);
+                rock.position.y = 1;
+                rock.castShadow = true;
+                rock.receiveShadow = true;
+                return rock;
+            }
+
+            setupEventListeners() {
+                // Keyboard events
+                window.addEventListener('keydown', (e) => {
+                    this.keys[e.code] = true;
+                    this.handleKeyPress(e.code);
+                });
+
+                window.addEventListener('keyup', (e) => {
+                    this.keys[e.code] = false;
+                });
+
+                // Mouse events
+                this.canvas.addEventListener('mousemove', (e) => {
+                    this.mousePos.x = e.clientX;
+                    this.mousePos.y = e.clientY;
+                    this.updateCustomCursor(e.clientX, e.clientY);
+                });
+
+                this.canvas.addEventListener('click', (e) => {
+                    this.handleMouseClick(e.clientX, e.clientY);
+                });
+
+                // Window resize
+                window.addEventListener('resize', () => {
+                    this.setupCanvas();
+                });
+
+                // Fullscreen toggle
+                document.addEventListener('keydown', (e) => {
+                    if (e.key === 'F11') {
+                        e.preventDefault();
+                        this.toggleFullscreen();
+                    }
+                });
+            }
+
+            setupUI() {
+                // Chat input
+                const chatInput = document.getElementById('chatInput');
+                chatInput.addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') {
+                        this.sendChatMessage(chatInput.value);
+                        chatInput.value = '';
+                    }
+                });
+
+                // Menu button
+                document.getElementById('menuButton').addEventListener('click', () => {
+                    this.toggleMenu();
+                });
+
+                // Skill slots
+                document.querySelectorAll('.skill-slot').forEach(slot => {
+                    slot.addEventListener('click', () => {
+                        this.useSkill(slot.dataset.skill);
+                    });
+                });
+
+                // Generate inventory slots
+                this.generateInventorySlots();
+            }
+
+            async loadAssets() {
+                const loadingProgress = document.getElementById('loadingProgress');
+                const loadingText = document.getElementById('loadingText');
+                
+                const assets = [
+                    'Karakterler yükleniyor...',
+                    'Harita yükleniyor...',
+                    'Sesler yükleniyor...',
+                    'Efektler yükleniyor...',
+                    'Bağlantı kuruluyor...'
+                ];
+
+                for (let i = 0; i < assets.length; i++) {
+                    loadingText.textContent = assets[i];
+                    loadingProgress.style.width = `${((i + 1) / assets.length) * 100}%`;
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                }
+
+                // Hide loading screen
+                document.getElementById('loadingScreen').style.display = 'none';
+                this.gameState = 'playing';
+            }
+
+            setupNetworking() {
+                // Socket events
+                this.socket.on('connect', () => {
+                    console.log('Sunucuya bağlandı');
+                    this.joinGame();
+                });
+
+                this.socket.on('playerJoined', (playerData) => {
+                    this.addPlayer(playerData);
+                });
+
+                this.socket.on('playerLeft', (playerId) => {
+                    this.removePlayer(playerId);
+                });
+
+                this.socket.on('playerUpdate', (playerData) => {
+                    this.updatePlayer(playerData);
+                });
+
+                this.socket.on('chatMessage', (data) => {
+                    this.addChatMessage(data.player, data.message);
+                });
+
+                this.socket.on('worldData', (worldData) => {
+                    this.loadWorld(worldData);
+                });
+
+                this.socket.on('monsterSpawned', (monsterData) => {
+                    this.addMonster(monsterData);
+                });
+
+                this.socket.on('monsterUpdate', (monsterData) => {
+                    this.updateMonster(monsterData);
+                });
+
+                this.socket.on('monsterDied', (monsterId) => {
+                    this.removeMonster(monsterId);
+                });
+            }
+
+            joinGame() {
+                // Get character data from localStorage
+                const characterData = this.getSelectedCharacter();
+                
+                this.socket.emit('joinGame', {
+                    character: characterData,
+                    position: { x: 400, y: 300 }
+                });
+            }
+
+            getSelectedCharacter() {
+                const saved = localStorage.getItem('selectedCharacter');
+                if (saved) {
+                    try {
+                        const character = JSON.parse(saved);
+                        // Ensure level system properties exist
+                        if (!character.level) character.level = 1;
+                        if (!character.exp) character.exp = 0;
+                        if (!character.maxExp) character.maxExp = this.getRequiredXP(character.level);
+                        if (!character.hp) character.hp = 100;
+                        if (!character.maxHp) character.maxHp = 100;
+                        if (!character.mp) character.mp = 50;
+                        if (!character.maxMp) character.maxMp = 50;
+                        return character;
+                    } catch (e) {
+                        console.error('Karakter verisi okunamadı:', e);
+                    }
+                }
+                
+                // Default character with level system
+                return {
+                    id: 'warrior',
+                    name: 'Savaşçı',
+                    class: 'Yakın Dövüş Uzmanı',
+                    level: 1,
+                    hp: 100,
+                    maxHp: 100,
+                    mp: 50,
+                    maxMp: 50,
+                    exp: 0,
+                    maxExp: 100
+                };
+            }
+
+            startGameLoop() {
+                const gameLoop = () => {
+                    if (this.gameState === 'playing') {
+                        this.update();
+                        this.render();
+                    }
+                    requestAnimationFrame(gameLoop);
+                };
+                gameLoop();
+            }
+
+            update() {
+                this.handleInput();
+                this.updateCamera();
+                this.updatePlayers();
+                this.updateMonsters();
+                this.updateProjectiles();
+                this.checkCollisions();
+            }
+
+            handleInput() {
+                if (!this.currentPlayer) return;
+
+                let moved = false;
+                const speed = 3;
+
+                if (this.keys['KeyW'] || this.keys['ArrowUp']) {
+                    this.currentPlayer.y -= speed;
+                    moved = true;
+                }
+                if (this.keys['KeyS'] || this.keys['ArrowDown']) {
+                    this.currentPlayer.y += speed;
+                    moved = true;
+                }
+                if (this.keys['KeyA'] || this.keys['ArrowLeft']) {
+                    this.currentPlayer.x -= speed;
+                    moved = true;
+                }
+                if (this.keys['KeyD'] || this.keys['ArrowRight']) {
+                    this.currentPlayer.x += speed;
+                    moved = true;
+                }
+
+                if (moved) {
+                    this.socket.emit('playerMove', {
+                        x: this.currentPlayer.x,
+                        y: this.currentPlayer.y
+                    });
+                }
+            }
+
+            handleKeyPress(code) {
+                switch (code) {
+                    case 'KeyQ':
+                        this.useSkill('attack');
+                        break;
+                    case 'KeyW':
+                        this.useSkill('heal');
+                        break;
+                    case 'KeyE':
+                        this.useSkill('fireball');
+                        break;
+                    case 'KeyR':
+                        this.useSkill('shield');
+                        break;
+                    case 'KeyI':
+                        this.toggleInventory();
+                        break;
+                    case 'Enter':
+                        document.getElementById('chatInput').focus();
+                        break;
+                }
+            }
+
+            updateCamera() {
+                if (this.currentPlayer) {
+                    this.camera.x = this.currentPlayer.x - this.viewportWidth / 2;
+                    this.camera.y = this.currentPlayer.y - this.viewportHeight / 2;
+                }
+            }
+
+            render() {
+                // Clear canvas
+                this.ctx.fillStyle = '#2d4a22';
+                this.ctx.fillRect(0, 0, this.viewportWidth, this.viewportHeight);
+
+                // Render world
+                this.renderWorld();
+                
+                // Render players
+                this.renderPlayers();
+                
+                // Render monsters
+                this.renderMonsters();
+                
+                // Render projectiles
+                this.renderProjectiles();
+                
+                // Render level up effects
+                this.renderLevelUpEffects();
+                
+                // Render UI elements
+                this.renderUI();
+            }
+
+            renderWorld() {
+                const tileSize = this.tileSize;
+                const startX = Math.floor(this.camera.x / tileSize);
+                const startY = Math.floor(this.camera.y / tileSize);
+                const endX = startX + Math.ceil(this.viewportWidth / tileSize) + 1;
+                const endY = startY + Math.ceil(this.viewportHeight / tileSize) + 1;
+
+                // Render base terrain
+                for (let x = startX; x < endX; x++) {
+                    for (let y = startY; y < endY; y++) {
+                        const screenX = x * tileSize - this.camera.x;
+                        const screenY = y * tileSize - this.camera.y;
+                        
+                        this.renderTile(x, y, screenX, screenY, tileSize);
+                    }
+                }
+
+                // Render world objects (trees, rocks, flowers)
+                this.renderWorldObjects(startX, startY, endX, endY, tileSize);
+            }
+
+            renderTile(worldX, worldY, screenX, screenY, tileSize) {
+                const tileType = this.getTileType(worldX, worldY);
+                
+                switch (tileType) {
+                    case 'grass':
+                        // Isometric grass tile with depth
+                        const grassVariant = (worldX * 7 + worldY * 13) % 4;
+                        const grassColors = ['#4a6741', '#3d5a32', '#2d4a22', '#5a7851'];
+                        
+                        // Base grass
+                        this.ctx.fillStyle = grassColors[grassVariant];
+                        this.ctx.fillRect(screenX, screenY, tileSize, tileSize);
+                        
+                        // Add 3D depth effect - darker bottom edge
+                        this.ctx.fillStyle = this.darkenColor(grassColors[grassVariant], 0.3);
+                        this.ctx.fillRect(screenX, screenY + tileSize - 4, tileSize, 4);
+                        
+                        // Add 3D depth effect - darker right edge
+                        this.ctx.fillRect(screenX + tileSize - 4, screenY, 4, tileSize);
+                        
+                        // Lighter top-left for 3D effect
+                        this.ctx.fillStyle = this.lightenColor(grassColors[grassVariant], 0.2);
+                        this.ctx.fillRect(screenX, screenY, tileSize - 4, 2);
+                        this.ctx.fillRect(screenX, screenY, 2, tileSize - 4);
+                        
+                        // Add grass texture with depth
+                        this.ctx.fillStyle = 'rgba(90, 120, 81, 0.4)';
+                        for (let i = 0; i < 3; i++) {
+                            const grassX = screenX + (worldX * 3 + worldY * 5 + i * 7) % (tileSize - 2);
+                            const grassY = screenY + (worldX * 5 + worldY * 3 + i * 11) % (tileSize - 2);
+                            this.ctx.fillRect(grassX, grassY, 2, 3); // Slightly taller for 3D effect
+                        }
+                        break;
+                        
+                    case 'dirt':
+                        // Isometric dirt with 3D depth
+                        this.ctx.fillStyle = '#8b6f47';
+                        this.ctx.fillRect(screenX, screenY, tileSize, tileSize);
+                        
+                        // 3D depth effects
+                        this.ctx.fillStyle = this.darkenColor('#8b6f47', 0.4);
+                        this.ctx.fillRect(screenX, screenY + tileSize - 5, tileSize, 5);
+                        this.ctx.fillRect(screenX + tileSize - 5, screenY, 5, tileSize);
+                        
+                        // Lighter edges
+                        this.ctx.fillStyle = this.lightenColor('#8b6f47', 0.3);
+                        this.ctx.fillRect(screenX, screenY, tileSize - 5, 2);
+                        this.ctx.fillRect(screenX, screenY, 2, tileSize - 5);
+                        
+                        // Dirt texture with depth
+                        this.ctx.fillStyle = 'rgba(139, 111, 71, 0.6)';
+                        for (let i = 0; i < 5; i++) {
+                            const dirtX = screenX + (worldX * 2 + worldY * 3 + i * 5) % (tileSize - 1);
+                            const dirtY = screenY + (worldX * 4 + worldY * 2 + i * 7) % (tileSize - 1);
+                            this.ctx.fillRect(dirtX, dirtY, 2, 2);
+                        }
+                        break;
+                        
+                    case 'stone':
+                        // Isometric stone with strong 3D effect
+                        this.ctx.fillStyle = '#666666';
+                        this.ctx.fillRect(screenX, screenY, tileSize, tileSize);
+                        
+                        // Strong 3D depth for stone
+                        this.ctx.fillStyle = this.darkenColor('#666666', 0.5);
+                        this.ctx.fillRect(screenX, screenY + tileSize - 6, tileSize, 6);
+                        this.ctx.fillRect(screenX + tileSize - 6, screenY, 6, tileSize);
+                        
+                        // Bright highlight for stone
+                        this.ctx.fillStyle = this.lightenColor('#666666', 0.4);
+                        this.ctx.fillRect(screenX, screenY, tileSize - 6, 3);
+                        this.ctx.fillRect(screenX, screenY, 3, tileSize - 6);
+                        
+                        // Stone center with depth
+                        this.ctx.fillStyle = '#777777';
+                        this.ctx.fillRect(screenX + 3, screenY + 3, tileSize - 9, tileSize - 9);
+                        break;
+                        
+                    case 'water':
+                        // Animated water
+                        const waterPhase = (Date.now() / 1000 + worldX + worldY) % (Math.PI * 2);
+                        const waterBlue = Math.floor(100 + Math.sin(waterPhase) * 20);
+                        this.ctx.fillStyle = `rgb(64, 164, ${waterBlue})`;
+                        this.ctx.fillRect(screenX, screenY, tileSize, tileSize);
+                        
+                        // Water highlights
+                        this.ctx.fillStyle = `rgba(255, 255, 255, ${0.2 + Math.sin(waterPhase) * 0.1})`;
+                        this.ctx.fillRect(screenX + 4, screenY + 4, tileSize - 8, 2);
+                        break;
+                }
+            }
+
+            getTileType(x, y) {
+                // Create varied terrain using noise-like function
+                const noise = (x * 7 + y * 13) % 100;
+                
+                // Water areas (rivers, ponds)
+                if ((x + y) % 50 < 3 && noise < 30) return 'water';
+                
+                // Stone paths
+                if (Math.abs(x % 20 - 10) < 2 || Math.abs(y % 20 - 10) < 2) {
+                    if (noise < 20) return 'stone';
+                }
+                
+                // Dirt patches
+                if (noise < 15) return 'dirt';
+                
+                // Default grass
+                return 'grass';
+            }
+
+            renderWorldObjects(startX, startY, endX, endY, tileSize) {
+                for (let x = startX; x < endX; x++) {
+                    for (let y = startY; y < endY; y++) {
+                        const screenX = x * tileSize - this.camera.x;
+                        const screenY = y * tileSize - this.camera.y;
+                        
+                        this.renderObjectsAtTile(x, y, screenX, screenY, tileSize);
+                    }
+                }
+            }
+
+            renderObjectsAtTile(worldX, worldY, screenX, screenY, tileSize) {
+                const objectSeed = worldX * 31 + worldY * 17;
+                const objectType = objectSeed % 100;
+                
+                // Trees (more common)
+                if (objectType < 8) {
+                    this.renderTree(screenX, screenY, tileSize, objectSeed);
+                }
+                // Large rocks
+                else if (objectType < 12) {
+                    this.renderRock(screenX, screenY, tileSize, objectSeed);
+                }
+                // Flowers
+                else if (objectType < 18) {
+                    this.renderFlower(screenX, screenY, tileSize, objectSeed);
+                }
+                // Bushes
+                else if (objectType < 22) {
+                    this.renderBush(screenX, screenY, tileSize, objectSeed);
+                }
+                // Small stones
+                else if (objectType < 28) {
+                    this.renderSmallStones(screenX, screenY, tileSize, objectSeed);
+                }
+            }
+
+            renderTree(x, y, tileSize, seed) {
+                const treeVariant = seed % 3;
+                const treeSize = 0.8 + (seed % 10) * 0.04; // 0.8 to 1.2 scale
+                
+                // Tree shadow (isometric depth)
+                this.ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+                const shadowOffset = tileSize * 0.1;
+                this.ctx.beginPath();
+                this.ctx.ellipse(x + tileSize * 0.6 + shadowOffset, y + tileSize * 0.8 + shadowOffset, 
+                                tileSize * 0.3 * treeSize, tileSize * 0.15 * treeSize, 0, 0, Math.PI * 2);
+                this.ctx.fill();
+                
+                // Tree trunk with 3D effect
+                const trunkColor = '#8B4513';
+                this.ctx.fillStyle = trunkColor;
+                const trunkWidth = tileSize * 0.2 * treeSize;
+                const trunkHeight = tileSize * 0.6 * treeSize;
+                const trunkX = x + tileSize * 0.4;
+                const trunkY = y + tileSize * 0.7 - trunkHeight;
+                
+                this.ctx.fillRect(trunkX, trunkY, trunkWidth, trunkHeight);
+                
+                // Trunk 3D depth
+                this.ctx.fillStyle = this.darkenColor(trunkColor, 0.4);
+                this.ctx.fillRect(trunkX + trunkWidth - 2, trunkY, 2, trunkHeight);
+                this.ctx.fillRect(trunkX, trunkY + trunkHeight - 2, trunkWidth, 2);
+                
+                // Trunk highlight
+                this.ctx.fillStyle = this.lightenColor(trunkColor, 0.3);
+                this.ctx.fillRect(trunkX, trunkY, 2, trunkHeight - 2);
+                
+                // Tree crown with 3D effect
+                const crownColors = ['#228B22', '#32CD32', '#006400'];
+                const crownColor = crownColors[treeVariant];
+                
+                const crownSize = tileSize * 0.7 * treeSize;
+                const crownX = x + tileSize * 0.5 - crownSize * 0.5;
+                const crownY = y + tileSize * 0.3 - crownSize * 0.5;
+                
+                // Crown shadow/depth
+                this.ctx.fillStyle = this.darkenColor(crownColor, 0.3);
+                this.ctx.beginPath();
+                this.ctx.arc(crownX + crownSize * 0.5 + 2, crownY + crownSize * 0.5 + 2, crownSize * 0.5, 0, Math.PI * 2);
+                this.ctx.fill();
+                
+                // Main crown
+                this.ctx.fillStyle = crownColor;
+                this.ctx.beginPath();
+                this.ctx.arc(crownX + crownSize * 0.5, crownY + crownSize * 0.5, crownSize * 0.5, 0, Math.PI * 2);
+                this.ctx.fill();
+                
+                // Crown highlights for 3D effect
+                this.ctx.fillStyle = this.lightenColor(crownColor, 0.4);
+                this.ctx.beginPath();
+                this.ctx.arc(crownX + crownSize * 0.3, crownY + crownSize * 0.3, crownSize * 0.2, 0, Math.PI * 2);
+                this.ctx.fill();
+                
+                // Additional small highlight
+                this.ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+                this.ctx.beginPath();
+                this.ctx.arc(crownX + crownSize * 0.25, crownY + crownSize * 0.25, crownSize * 0.1, 0, Math.PI * 2);
+                this.ctx.fill();
+            }
+
+            renderRock(x, y, tileSize, seed) {
+                const rockSize = 0.6 + (seed % 8) * 0.05;
+                const rockColor = seed % 2 === 0 ? '#696969' : '#778899';
+                
+                this.ctx.fillStyle = rockColor;
+                const rockWidth = tileSize * 0.8 * rockSize;
+                const rockHeight = tileSize * 0.6 * rockSize;
+                const rockX = x + tileSize * 0.1 + (seed % 5) * 2;
+                const rockY = y + tileSize * 0.6 - rockHeight;
+                
+                // Draw rock as rounded rectangle
+                this.ctx.beginPath();
+                this.ctx.roundRect(rockX, rockY, rockWidth, rockHeight, 4);
+                this.ctx.fill();
+                
+                // Rock highlight
+                this.ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+                this.ctx.fillRect(rockX + 2, rockY + 2, rockWidth * 0.4, rockHeight * 0.3);
+            }
+
+            renderFlower(x, y, tileSize, seed) {
+                const flowerColors = ['#FF69B4', '#FFB6C1', '#FF1493', '#FFA500', '#FFFF00', '#FF4500'];
+                const flowerColor = flowerColors[seed % flowerColors.length];
+                
+                const flowerX = x + tileSize * 0.5 + (seed % 7 - 3) * 2;
+                const flowerY = y + tileSize * 0.7 + (seed % 5 - 2) * 2;
+                
+                // Flower stem
+                this.ctx.fillStyle = '#228B22';
+                this.ctx.fillRect(flowerX - 1, flowerY, 2, tileSize * 0.3);
+                
+                // Flower petals
+                this.ctx.fillStyle = flowerColor;
+                this.ctx.beginPath();
+                this.ctx.arc(flowerX, flowerY, 4, 0, Math.PI * 2);
+                this.ctx.fill();
+                
+                // Flower center
+                this.ctx.fillStyle = '#FFFF00';
+                this.ctx.beginPath();
+                this.ctx.arc(flowerX, flowerY, 2, 0, Math.PI * 2);
+                this.ctx.fill();
+            }
+
+            renderBush(x, y, tileSize, seed) {
+                const bushColor = seed % 2 === 0 ? '#228B22' : '#32CD32';
+                this.ctx.fillStyle = bushColor;
+                
+                const bushSize = 0.4 + (seed % 6) * 0.05;
+                const bushX = x + tileSize * 0.3 + (seed % 5) * 2;
+                const bushY = y + tileSize * 0.6;
+                
+                // Draw bush as multiple small circles
+                for (let i = 0; i < 3; i++) {
+                    const circleX = bushX + (i - 1) * 6;
+                    const circleY = bushY + (seed % 3 - 1) * 2;
+                    
+                    this.ctx.beginPath();
+                    this.ctx.arc(circleX, circleY, tileSize * 0.15 * bushSize, 0, Math.PI * 2);
+                    this.ctx.fill();
+                }
+            }
+
+            renderSmallStones(x, y, tileSize, seed) {
+                this.ctx.fillStyle = '#A9A9A9';
+                
+                for (let i = 0; i < 3; i++) {
+                    const stoneX = x + (seed * 3 + i * 7) % (tileSize - 4) + 2;
+                    const stoneY = y + (seed * 5 + i * 11) % (tileSize - 4) + 2;
+                    const stoneSize = 2 + (seed + i) % 3;
+                    
+                    this.ctx.beginPath();
+                    this.ctx.arc(stoneX, stoneY, stoneSize, 0, Math.PI * 2);
+                    this.ctx.fill();
+                }
+            }
+
+            renderPlayers() {
+                this.players.forEach(player => {
+                    const screenX = player.x - this.camera.x;
+                    const screenY = player.y - this.camera.y;
+                    
+                    // Player shadow (isometric depth)
+                    this.ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+                    this.ctx.beginPath();
+                    this.ctx.ellipse(screenX + 2, screenY + 10, 12, 6, 0, 0, Math.PI * 2);
+                    this.ctx.fill();
+                    
+                    // Player body with 3D effect
+                    const bodyColor = '#8b5a2b';
+                    
+                    // Body shadow/depth
+                    this.ctx.fillStyle = this.darkenColor(bodyColor, 0.4);
+                    this.ctx.fillRect(screenX - 6, screenY - 6, 14, 14);
+                    
+                    // Main body
+                    this.ctx.fillStyle = bodyColor;
+                    this.ctx.fillRect(screenX - 8, screenY - 8, 14, 14);
+                    
+                    // Body highlights for 3D effect
+                    this.ctx.fillStyle = this.lightenColor(bodyColor, 0.3);
+                    this.ctx.fillRect(screenX - 8, screenY - 8, 12, 2);
+                    this.ctx.fillRect(screenX - 8, screenY - 8, 2, 12);
+                    
+                    // Player head with 3D effect
+                    const headColor = '#d4af37';
+                    
+                    // Head shadow
+                    this.ctx.fillStyle = this.darkenColor(headColor, 0.3);
+                    this.ctx.beginPath();
+                    this.ctx.arc(screenX + 1, screenY - 13, 6, 0, Math.PI * 2);
+                    this.ctx.fill();
+                    
+                    // Main head
+                    this.ctx.fillStyle = headColor;
+                    this.ctx.beginPath();
+                    this.ctx.arc(screenX, screenY - 15, 6, 0, Math.PI * 2);
+                    this.ctx.fill();
+                    
+                    // Head highlight
+                    this.ctx.fillStyle = this.lightenColor(headColor, 0.4);
+                    this.ctx.beginPath();
+                    this.ctx.arc(screenX - 2, screenY - 17, 2, 0, Math.PI * 2);
+                    this.ctx.fill();
+                    
+                    // Player name with shadow
+                    this.ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+                    this.ctx.font = '12px MedievalSharp';
+                    this.ctx.textAlign = 'center';
+                    this.ctx.fillText(player.name, screenX + 1, screenY - 24);
+                    
+                    this.ctx.fillStyle = '#d4af37';
+                    this.ctx.fillText(player.name, screenX, screenY - 25);
+                    
+                    // Health bar with 3D effect
+                    const hpPercent = player.hp / player.maxHp;
+                    
+                    // Health bar shadow
+                    this.ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+                    this.ctx.fillRect(screenX - 9, screenY + 13, 21, 4);
+                    
+                    // Health bar background
+                    this.ctx.fillStyle = '#333333';
+                    this.ctx.fillRect(screenX - 10, screenY + 12, 20, 3);
+                    
+                    // Health bar fill
+                    this.ctx.fillStyle = '#ff4444';
+                    this.ctx.fillRect(screenX - 10, screenY + 12, 20 * hpPercent, 3);
+                    
+                    // Health bar highlight
+                    this.ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+                    this.ctx.fillRect(screenX - 10, screenY + 12, 20 * hpPercent, 1);
+                    
+                    // Health bar border
+                    this.ctx.strokeStyle = '#000';
+                    this.ctx.lineWidth = 1;
+                    this.ctx.strokeRect(screenX - 10, screenY + 12, 20, 3);
+                });
+            }
+
+            renderMonsters() {
+                this.monsters.forEach(monster => {
+                    const screenX = monster.x - this.camera.x;
+                    const screenY = monster.y - this.camera.y;
+                    
+                    // Skip if monster is off-screen
+                    if (screenX < -50 || screenX > this.viewportWidth + 50 || 
+                        screenY < -50 || screenY > this.viewportHeight + 50) {
+                        return;
+                    }
+                    
+                    this.renderMonster(monster, screenX, screenY);
+                });
+            }
+
+            renderMonster(monster, screenX, screenY) {
+                // Monster shadow
+                this.ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+                this.ctx.beginPath();
+                this.ctx.ellipse(screenX + 2, screenY + 8, 10, 5, 0, 0, Math.PI * 2);
+                this.ctx.fill();
+
+                switch (monster.type) {
+                    case 'slime':
+                        this.renderSlime(monster, screenX, screenY);
+                        break;
+                    case 'goblin':
+                        this.renderGoblin(monster, screenX, screenY);
+                        break;
+                    case 'orc':
+                        this.renderOrc(monster, screenX, screenY);
+                        break;
+                }
+
+                // Monster health bar
+                if (monster.hp < monster.maxHp) {
+                    this.renderMonsterHealthBar(monster, screenX, screenY);
+                }
+
+                // Damage numbers
+                if (monster.damageNumbers && monster.damageNumbers.length > 0) {
+                    this.renderDamageNumbers(monster, screenX, screenY);
+                }
+            }
+
+            renderSlime(monster, screenX, screenY) {
+                const time = Date.now() / 1000;
+                const bounce = Math.sin(time * 4 + monster.id * 0.5) * 2;
+                const slimeY = screenY + bounce;
+
+                // Slime body (main)
+                this.ctx.fillStyle = monster.color || '#32CD32';
+                this.ctx.beginPath();
+                this.ctx.arc(screenX, slimeY - 5, 12, 0, Math.PI * 2);
+                this.ctx.fill();
+
+                // Slime body (bottom part)
+                this.ctx.fillStyle = this.darkenColor(monster.color || '#32CD32', 0.2);
+                this.ctx.beginPath();
+                this.ctx.ellipse(screenX, slimeY + 2, 12, 8, 0, 0, Math.PI * 2);
+                this.ctx.fill();
+
+                // Slime highlight
+                this.ctx.fillStyle = this.lightenColor(monster.color || '#32CD32', 0.4);
+                this.ctx.beginPath();
+                this.ctx.arc(screenX - 4, slimeY - 8, 4, 0, Math.PI * 2);
+                this.ctx.fill();
+
+                // Slime eyes
+                this.ctx.fillStyle = '#000000';
+                this.ctx.beginPath();
+                this.ctx.arc(screenX - 4, slimeY - 5, 2, 0, Math.PI * 2);
+                this.ctx.fill();
+                this.ctx.beginPath();
+                this.ctx.arc(screenX + 4, slimeY - 5, 2, 0, Math.PI * 2);
+                this.ctx.fill();
+
+                // Eye highlights
+                this.ctx.fillStyle = '#FFFFFF';
+                this.ctx.beginPath();
+                this.ctx.arc(screenX - 3, slimeY - 6, 1, 0, Math.PI * 2);
+                this.ctx.fill();
+                this.ctx.beginPath();
+                this.ctx.arc(screenX + 5, slimeY - 6, 1, 0, Math.PI * 2);
+                this.ctx.fill();
+            }
+
+            renderGoblin(monster, screenX, screenY) {
+                // Goblin body
+                this.ctx.fillStyle = '#8B4513';
+                this.ctx.fillRect(screenX - 6, screenY - 8, 12, 12);
+
+                // Body 3D effect
+                this.ctx.fillStyle = this.darkenColor('#8B4513', 0.3);
+                this.ctx.fillRect(screenX + 4, screenY - 8, 2, 12);
+                this.ctx.fillRect(screenX - 6, screenY + 2, 12, 2);
+
+                // Goblin head
+                this.ctx.fillStyle = '#90EE90';
+                this.ctx.beginPath();
+                this.ctx.arc(screenX, screenY - 12, 7, 0, Math.PI * 2);
+                this.ctx.fill();
+
+                // Head 3D effect
+                this.ctx.fillStyle = this.darkenColor('#90EE90', 0.2);
+                this.ctx.beginPath();
+                this.ctx.arc(screenX + 1, screenY - 11, 7, 0, Math.PI * 2);
+                this.ctx.fill();
+
+                // Goblin ears
+                this.ctx.fillStyle = '#90EE90';
+                this.ctx.beginPath();
+                this.ctx.ellipse(screenX - 8, screenY - 12, 3, 6, -0.3, 0, Math.PI * 2);
+                this.ctx.fill();
+                this.ctx.beginPath();
+                this.ctx.ellipse(screenX + 8, screenY - 12, 3, 6, 0.3, 0, Math.PI * 2);
+                this.ctx.fill();
+
+                // Goblin eyes
+                this.ctx.fillStyle = '#FF0000';
+                this.ctx.beginPath();
+                this.ctx.arc(screenX - 3, screenY - 12, 1.5, 0, Math.PI * 2);
+                this.ctx.fill();
+                this.ctx.beginPath();
+                this.ctx.arc(screenX + 3, screenY - 12, 1.5, 0, Math.PI * 2);
+                this.ctx.fill();
+
+                // Weapon (club)
+                if (monster.state === 'attacking') {
+                    this.ctx.fillStyle = '#8B4513';
+                    this.ctx.fillRect(screenX + 8, screenY - 15, 3, 12);
+                    this.ctx.fillStyle = '#654321';
+                    this.ctx.fillRect(screenX + 8, screenY - 18, 5, 3);
+                }
+            }
+
+            renderOrc(monster, screenX, screenY) {
+                // Orc is larger than goblin
+                const scale = 1.3;
+
+                // Orc body
+                this.ctx.fillStyle = '#2F4F2F';
+                this.ctx.fillRect(screenX - 8 * scale, screenY - 10 * scale, 16 * scale, 16 * scale);
+
+                // Body 3D effect
+                this.ctx.fillStyle = this.darkenColor('#2F4F2F', 0.4);
+                this.ctx.fillRect(screenX + 6 * scale, screenY - 10 * scale, 2 * scale, 16 * scale);
+                this.ctx.fillRect(screenX - 8 * scale, screenY + 4 * scale, 16 * scale, 2 * scale);
+
+                // Orc head
+                this.ctx.fillStyle = '#556B2F';
+                this.ctx.beginPath();
+                this.ctx.arc(screenX, screenY - 15 * scale, 9 * scale, 0, Math.PI * 2);
+                this.ctx.fill();
+
+                // Head 3D effect
+                this.ctx.fillStyle = this.darkenColor('#556B2F', 0.3);
+                this.ctx.beginPath();
+                this.ctx.arc(screenX + 2, screenY - 13 * scale, 9 * scale, 0, Math.PI * 2);
+                this.ctx.fill();
+
+                // Orc tusks
+                this.ctx.fillStyle = '#FFFFFF';
+                this.ctx.fillRect(screenX - 2, screenY - 10 * scale, 2, 4 * scale);
+                this.ctx.fillRect(screenX + 1, screenY - 10 * scale, 2, 4 * scale);
+
+                // Orc eyes
+                this.ctx.fillStyle = '#FF4500';
+                this.ctx.beginPath();
+                this.ctx.arc(screenX - 4, screenY - 15 * scale, 2, 0, Math.PI * 2);
+                this.ctx.fill();
+                this.ctx.beginPath();
+                this.ctx.arc(screenX + 4, screenY - 15 * scale, 2, 0, Math.PI * 2);
+                this.ctx.fill();
+
+                // Weapon (axe)
+                if (monster.state === 'attacking') {
+                    this.ctx.fillStyle = '#8B4513';
+                    this.ctx.fillRect(screenX + 12 * scale, screenY - 20 * scale, 2, 15 * scale);
+                    this.ctx.fillStyle = '#C0C0C0';
+                    this.ctx.fillRect(screenX + 10 * scale, screenY - 25 * scale, 6 * scale, 5 * scale);
+                }
+            }
+
+            renderMonsterHealthBar(monster, screenX, screenY) {
+                const hpPercent = monster.hp / monster.maxHp;
+                const barWidth = 20;
+                const barHeight = 3;
+                const barY = screenY - 25;
+
+                // Health bar shadow
+                this.ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+                this.ctx.fillRect(screenX - barWidth/2 + 1, barY + 1, barWidth, barHeight);
+
+                // Health bar background
+                this.ctx.fillStyle = '#333333';
+                this.ctx.fillRect(screenX - barWidth/2, barY, barWidth, barHeight);
+
+                // Health bar fill
+                const hpColor = hpPercent > 0.6 ? '#00FF00' : hpPercent > 0.3 ? '#FFFF00' : '#FF0000';
+                this.ctx.fillStyle = hpColor;
+                this.ctx.fillRect(screenX - barWidth/2, barY, barWidth * hpPercent, barHeight);
+
+                // Health bar border
+                this.ctx.strokeStyle = '#000000';
+                this.ctx.lineWidth = 1;
+                this.ctx.strokeRect(screenX - barWidth/2, barY, barWidth, barHeight);
+            }
+
+            renderDamageNumbers(monster, screenX, screenY) {
+                const currentTime = Date.now();
+                monster.damageNumbers = monster.damageNumbers.filter(dmg => {
+                    const age = currentTime - dmg.time;
+                    if (age > 1000) return false; // Remove after 1 second
+
+                    const alpha = 1 - (age / 1000);
+                    const offsetY = age * 0.05; // Float upward
+
+                    this.ctx.fillStyle = `rgba(255, 255, 0, ${alpha})`;
+                    this.ctx.font = 'bold 14px MedievalSharp';
+                    this.ctx.textAlign = 'center';
+                    this.ctx.fillText(`-${dmg.amount}`, screenX + dmg.offsetX, screenY - 30 - offsetY);
+
+                    return true;
+                });
+            }
+
+            renderProjectiles() {
+                this.projectiles.forEach((projectile, index) => {
+                    const screenX = projectile.x - this.camera.x;
+                    const screenY = projectile.y - this.camera.y;
+
+                    switch (projectile.type) {
+                        case 'fireball':
+                            this.renderFireball(projectile, screenX, screenY);
+                            break;
+                        case 'arrow':
+                            this.renderArrow(projectile, screenX, screenY);
+                            break;
+                    }
+                });
+            }
+
+            renderFireball(projectile, screenX, screenY) {
+                const time = Date.now() / 100;
+                
+                // Fireball trail
+                this.ctx.fillStyle = 'rgba(255, 100, 0, 0.5)';
+                this.ctx.beginPath();
+                this.ctx.arc(screenX - projectile.vx * 2, screenY - projectile.vy * 2, 4, 0, Math.PI * 2);
+                this.ctx.fill();
+
+                // Main fireball
+                this.ctx.fillStyle = '#FF4500';
+                this.ctx.beginPath();
+                this.ctx.arc(screenX, screenY, 6, 0, Math.PI * 2);
+                this.ctx.fill();
+
+                // Fireball core
+                this.ctx.fillStyle = '#FFFF00';
+                this.ctx.beginPath();
+                this.ctx.arc(screenX - 1, screenY - 1, 3, 0, Math.PI * 2);
+                this.ctx.fill();
+
+                // Flickering effect
+                if (Math.sin(time + projectile.id) > 0) {
+                    this.ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+                    this.ctx.beginPath();
+                    this.ctx.arc(screenX, screenY, 2, 0, Math.PI * 2);
+                    this.ctx.fill();
+                }
+            }
+
+            renderArrow(projectile, screenX, screenY) {
+                const angle = Math.atan2(projectile.vy, projectile.vx);
+                
+                this.ctx.save();
+                this.ctx.translate(screenX, screenY);
+                this.ctx.rotate(angle);
+                
+                // Arrow shaft
+                this.ctx.fillStyle = '#8B4513';
+                this.ctx.fillRect(-8, -1, 16, 2);
+                
+                // Arrow head
+                this.ctx.fillStyle = '#C0C0C0';
+                this.ctx.beginPath();
+                this.ctx.moveTo(8, 0);
+                this.ctx.lineTo(4, -3);
+                this.ctx.lineTo(4, 3);
+                this.ctx.closePath();
+                this.ctx.fill();
+                
+                // Arrow fletching
+                this.ctx.fillStyle = '#FF0000';
+                this.ctx.fillRect(-8, -2, 3, 1);
+                this.ctx.fillRect(-8, 1, 3, 1);
+                
+                this.ctx.restore();
+            }
+
+            renderLevelUpEffects() {
+                if (!this.levelUpEffects) return;
+                
+                const currentTime = Date.now();
+                this.levelUpEffects = this.levelUpEffects.filter(effect => {
+                    const age = currentTime - effect.time;
+                    if (age > effect.duration) return false;
+                    
+                    const progress = age / effect.duration;
+                    const alpha = 1 - progress;
+                    const scale = 1 + progress * 2;
+                    
+                    const screenX = effect.x - this.camera.x;
+                    const screenY = effect.y - this.camera.y;
+                    
+                    // Golden circle effect
+                    this.ctx.save();
+                    this.ctx.globalAlpha = alpha;
+                    
+                    // Outer glow
+                    this.ctx.fillStyle = '#FFD700';
+                    this.ctx.beginPath();
+                    this.ctx.arc(screenX, screenY - 20, 30 * scale, 0, Math.PI * 2);
+                    this.ctx.fill();
+                    
+                    // Inner bright core
+                    this.ctx.fillStyle = '#FFFFFF';
+                    this.ctx.beginPath();
+                    this.ctx.arc(screenX, screenY - 20, 15 * scale, 0, Math.PI * 2);
+                    this.ctx.fill();
+                    
+                    // Sparkle effects
+                    for (let i = 0; i < 8; i++) {
+                        const angle = (i / 8) * Math.PI * 2 + progress * Math.PI * 4;
+                        const sparkleX = screenX + Math.cos(angle) * 40 * scale;
+                        const sparkleY = screenY - 20 + Math.sin(angle) * 40 * scale;
+                        
+                        this.ctx.fillStyle = '#FFD700';
+                        this.ctx.beginPath();
+                        this.ctx.arc(sparkleX, sparkleY, 3, 0, Math.PI * 2);
+                        this.ctx.fill();
+                    }
+                    
+                    // Level up text
+                    this.ctx.fillStyle = '#FFD700';
+                    this.ctx.font = 'bold 20px MedievalSharp';
+                    this.ctx.textAlign = 'center';
+                    this.ctx.fillText('LEVEL UP!', screenX, screenY - 50);
+                    
+                    this.ctx.restore();
+                    
+                    return true;
+                });
+            }
+
+            renderUI() {
+                // Update player stats in UI
+                if (this.currentPlayer) {
+                    this.updatePlayerStats(this.currentPlayer);
+                }
+            }
+
+            // Player management
+            addPlayer(playerData) {
+                this.players.set(playerData.id, playerData);
+                if (playerData.id === this.socket.id) {
+                    this.currentPlayer = playerData;
+                }
+                this.addChatMessage('Sistem', `${playerData.name} oyuna katıldı`);
+            }
+
+            removePlayer(playerId) {
+                const player = this.players.get(playerId);
+                if (player) {
+                    this.addChatMessage('Sistem', `${player.name} oyundan ayrıldı`);
+                    this.players.delete(playerId);
+                }
+            }
+
+            updatePlayer(playerData) {
+                this.players.set(playerData.id, playerData);
+                if (playerData.id === this.socket.id) {
+                    this.currentPlayer = playerData;
+                }
+            }
+
+            // UI Functions
+            updatePlayerStats(player) {
+                document.getElementById('hpText').textContent = `${player.hp}/${player.maxHp}`;
+                document.getElementById('mpText').textContent = `${player.mp}/${player.maxMp}`;
+                document.getElementById('levelText').textContent = `${player.level}`;
+                document.getElementById('expText').textContent = `${player.exp}/${player.maxExp}`;
+                
+                document.getElementById('hpBar').style.width = `${(player.hp / player.maxHp) * 100}%`;
+                document.getElementById('mpBar').style.width = `${(player.mp / player.maxMp) * 100}%`;
+                document.getElementById('expBar').style.width = `${(player.exp / player.maxExp) * 100}%`;
+                
+                // Add level-based glow effect to player avatar
+                const avatar = document.getElementById('playerAvatar');
+                if (player.level > 1) {
+                    const glowIntensity = Math.min(player.level * 0.1, 1);
+                    avatar.style.boxShadow = `0 0 ${10 + player.level * 2}px rgba(255, 215, 0, ${glowIntensity})`;
+                }
+            }
+
+            addChatMessage(sender, message) {
+                const chatMessages = document.getElementById('chatMessages');
+                const messageElement = document.createElement('div');
+                messageElement.innerHTML = `<span style="color: #d4af37;">${sender}:</span> ${message}`;
+                chatMessages.appendChild(messageElement);
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+            }
+
+            sendChatMessage(message) {
+                if (message.trim()) {
+                    this.socket.emit('chatMessage', message);
+                }
+            }
+
+            useSkill(skillName) {
+                console.log(`Skill used: ${skillName}`);
+                this.socket.emit('useSkill', skillName);
+            }
+
+            toggleInventory() {
+                const panel = document.getElementById('inventoryPanel');
+                panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+            }
+
+            toggleMenu() {
+                // Implement menu toggle
+                console.log('Menu toggled');
+            }
+
+            generateInventorySlots() {
+                const grid = document.getElementById('inventoryGrid');
+                for (let i = 0; i < 20; i++) {
+                    const slot = document.createElement('div');
+                    slot.className = 'inventory-slot';
+                    slot.dataset.slot = i;
+                    grid.appendChild(slot);
+                }
+            }
+
+            updateCustomCursor(x, y) {
+                const cursor = document.getElementById('customCursor');
+                cursor.style.left = `${x - 16}px`;
+                cursor.style.top = `${y - 16}px`;
+            }
+
+            toggleFullscreen() {
+                if (!document.fullscreenElement) {
+                    document.documentElement.requestFullscreen();
+                } else {
+                    document.exitFullscreen();
+                }
+            }
+
+            handleMouseClick(x, y) {
+                // Convert screen coordinates to world coordinates
+                const worldX = x + this.camera.x;
+                const worldY = y + this.camera.y;
+                
+                // Move player to clicked position
+                if (this.currentPlayer) {
+                    this.socket.emit('playerMove', { x: worldX, y: worldY });
+                }
+            }
+
+            updatePlayers() {
+                // Update player animations and states
+                this.players.forEach(player => {
+                    // Add animation logic here
+                });
+            }
+
+            updateMonsters() {
+                // Simple AI for monsters (client-side prediction)
+                this.monsters.forEach(monster => {
+                    if (monster.state === 'idle') {
+                        // Look for nearby players to target
+                        let nearestPlayer = null;
+                        let nearestDistance = Infinity;
+                        
+                        this.players.forEach(player => {
+                            const distance = Math.sqrt(
+                                Math.pow(player.x - monster.x, 2) + 
+                                Math.pow(player.y - monster.y, 2)
+                            );
+                            
+                            if (distance < 100 && distance < nearestDistance) {
+                                nearestPlayer = player;
+                                nearestDistance = distance;
+                            }
+                        });
+                        
+                        if (nearestPlayer) {
+                            monster.target = nearestPlayer.id;
+                            monster.state = 'chasing';
+                        }
+                    }
+                });
+            }
+
+            updateProjectiles() {
+                this.projectiles = this.projectiles.filter(projectile => {
+                    // Update projectile position
+                    projectile.x += projectile.vx;
+                    projectile.y += projectile.vy;
+                    
+                    // Remove if out of bounds or expired
+                    if (projectile.x < 0 || projectile.x > 2000 || 
+                        projectile.y < 0 || projectile.y > 2000 ||
+                        Date.now() - projectile.created > 5000) {
+                        return false;
+                    }
+                    
+                    return true;
+                });
+            }
+
+            checkCollisions() {
+                // Check projectile vs monster collisions
+                this.projectiles.forEach((projectile, pIndex) => {
+                    if (projectile.owner === this.socket.id) {
+                        this.monsters.forEach(monster => {
+                            const distance = Math.sqrt(
+                                Math.pow(projectile.x - monster.x, 2) + 
+                                Math.pow(projectile.y - monster.y, 2)
+                            );
+                            
+                            if (distance < 15) {
+                                // Hit! Remove projectile and damage monster
+                                this.projectiles.splice(pIndex, 1);
+                                this.damageMonster(monster, projectile.damage || 10);
+                            }
+                        });
+                    }
+                });
+            }
+
+            damageMonster(monster, damage) {
+                monster.hp -= damage;
+                
+                // Add damage number
+                if (!monster.damageNumbers) monster.damageNumbers = [];
+                monster.damageNumbers.push({
+                    amount: damage,
+                    time: Date.now(),
+                    offsetX: (Math.random() - 0.5) * 20
+                });
+                
+                if (monster.hp <= 0) {
+                    this.removeMonster(monster.id);
+                    // Award XP to player
+                    if (this.currentPlayer) {
+                        const xpGain = this.getMonsterXP(monster.type);
+                        this.gainExperience(xpGain);
+                        this.addChatMessage('Sistem', `${monster.type} öldürdün! +${xpGain} XP`);
+                    }
+                }
+            }
+
+            getMonsterXP(monsterType) {
+                switch (monsterType) {
+                    case 'slime': return 15;
+                    case 'goblin': return 25;
+                    case 'orc': return 50;
+                    default: return 10;
+                }
+            }
+
+            gainExperience(amount) {
+                if (!this.currentPlayer) return;
+                
+                const oldLevel = this.currentPlayer.level;
+                this.currentPlayer.exp += amount;
+                
+                // Check for level up
+                while (this.currentPlayer.exp >= this.getRequiredXP(this.currentPlayer.level)) {
+                    this.currentPlayer.exp -= this.getRequiredXP(this.currentPlayer.level);
+                    this.currentPlayer.level++;
+                    this.levelUp(oldLevel, this.currentPlayer.level);
+                }
+                
+                // Update max XP for current level
+                this.currentPlayer.maxExp = this.getRequiredXP(this.currentPlayer.level);
+                
+                // Send update to server
+                this.socket.emit('playerLevelUpdate', {
+                    level: this.currentPlayer.level,
+                    exp: this.currentPlayer.exp,
+                    maxExp: this.currentPlayer.maxExp,
+                    hp: this.currentPlayer.hp,
+                    maxHp: this.currentPlayer.maxHp,
+                    mp: this.currentPlayer.mp,
+                    maxMp: this.currentPlayer.maxMp
+                });
+            }
+
+            getRequiredXP(level) {
+                // Exponential XP curve like Zenonia
+                return Math.floor(100 * Math.pow(1.2, level - 1));
+            }
+
+            levelUp(oldLevel, newLevel) {
+                // Calculate stat increases
+                const hpIncrease = 20 + (newLevel * 5);
+                const mpIncrease = 10 + (newLevel * 3);
+                
+                // Increase max stats
+                this.currentPlayer.maxHp += hpIncrease;
+                this.currentPlayer.maxMp += mpIncrease;
+                
+                // Restore some HP/MP on level up
+                this.currentPlayer.hp = Math.min(this.currentPlayer.maxHp, this.currentPlayer.hp + hpIncrease);
+                this.currentPlayer.mp = Math.min(this.currentPlayer.maxMp, this.currentPlayer.mp + mpIncrease);
+                
+                // Show level up effect
+                this.showLevelUpEffect();
+                
+                // Chat message
+                this.addChatMessage('Sistem', `🎉 LEVEL UP! Seviye ${newLevel}! HP +${hpIncrease}, MP +${mpIncrease}`);
+                
+                // Play level up sound effect (visual representation)
+                this.playLevelUpSound();
+            }
+
+            showLevelUpEffect() {
+                // Create level up visual effect
+                if (!this.levelUpEffects) this.levelUpEffects = [];
+                
+                this.levelUpEffects.push({
+                    x: this.currentPlayer.x,
+                    y: this.currentPlayer.y,
+                    time: Date.now(),
+                    duration: 2000
+                });
+            }
+
+            playLevelUpSound() {
+                // Visual sound effect - screen flash
+                const canvas = this.canvas;
+                const originalFilter = canvas.style.filter;
+                
+                canvas.style.filter = 'brightness(1.5) saturate(1.3)';
+                setTimeout(() => {
+                    canvas.style.filter = originalFilter;
+                }, 200);
+            }
+
+            // Monster management
+            addMonster(monsterData) {
+                this.monsters.set(monsterData.id, monsterData);
+                console.log(`Monster spawned: ${monsterData.type} at (${monsterData.x}, ${monsterData.y})`);
+            }
+
+            updateMonster(monsterData) {
+                this.monsters.set(monsterData.id, monsterData);
+            }
+
+            removeMonster(monsterId) {
+                this.monsters.delete(monsterId);
+                console.log(`Monster removed: ${monsterId}`);
+            }
+
+            loadWorld(worldData) {
+                this.world = worldData;
+                console.log('World loaded:', worldData);
+            }
+
+            // Color utility functions for 3D effects
+            darkenColor(color, amount) {
+                const hex = color.replace('#', '');
+                const r = Math.max(0, parseInt(hex.substr(0, 2), 16) * (1 - amount));
+                const g = Math.max(0, parseInt(hex.substr(2, 2), 16) * (1 - amount));
+                const b = Math.max(0, parseInt(hex.substr(4, 2), 16) * (1 - amount));
+                return `rgb(${Math.floor(r)}, ${Math.floor(g)}, ${Math.floor(b)})`;
+            }
+
+            lightenColor(color, amount) {
+                const hex = color.replace('#', '');
+                const r = Math.min(255, parseInt(hex.substr(0, 2), 16) * (1 + amount));
+                const g = Math.min(255, parseInt(hex.substr(2, 2), 16) * (1 + amount));
+                const b = Math.min(255, parseInt(hex.substr(4, 2), 16) * (1 + amount));
+                return `rgb(${Math.floor(r)}, ${Math.floor(g)}, ${Math.floor(b)})`;
+            }
+        }
+
+        // Initialize 3D game when page loads
+        window.addEventListener('DOMContentLoaded', () => {
+            new DragonKeepRPG3D();
+        });
+
+        // Prevent context menu
+        document.addEventListener('contextmenu', e => e.preventDefault());
+    </script>
+</body>
+</html>

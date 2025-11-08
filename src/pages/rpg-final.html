@@ -1,0 +1,750 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Dragon's Keep RPG</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            font-family: Arial; 
+            background: linear-gradient(to bottom, #87CEEB 0%, #98FB98 100%);
+            overflow: hidden;
+        }
+        #gameCanvas { 
+            display: block; 
+            background: #2d5016;
+            cursor: crosshair;
+        }
+        .ui { 
+            position: absolute; 
+            color: white; 
+            pointer-events: none;
+        }
+        .ui * { pointer-events: auto; }
+        .stats {
+            top: 10px;
+            left: 10px;
+            background: rgba(0,0,0,0.8);
+            padding: 15px;
+            border-radius: 10px;
+            min-width: 250px;
+        }
+        .bar {
+            width: 100%;
+            height: 20px;
+            background: #333;
+            border-radius: 5px;
+            overflow: hidden;
+            margin: 5px 0;
+        }
+        .hp-fill { background: linear-gradient(90deg, #c41e3a, #ff4444); height: 100%; transition: width 0.3s; }
+        .mp-fill { background: linear-gradient(90deg, #0070dd, #4444ff); height: 100%; transition: width 0.3s; }
+        .xp-fill { background: linear-gradient(90deg, #ffd700, #ffff00); height: 100%; transition: width 0.3s; }
+        .skills {
+            bottom: 20px;
+            right: 20px;
+            display: flex;
+            gap: 10px;
+        }
+        .skill {
+            width: 60px;
+            height: 60px;
+            background: rgba(0,0,0,0.8);
+            border: 2px solid #d4af37;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            cursor: pointer;
+            position: relative;
+        }
+        .skill:hover { background: rgba(212,175,55,0.3); }
+        .skill.cooldown { opacity: 0.5; cursor: not-allowed; }
+        .key { position: absolute; bottom: 2px; right: 4px; font-size: 10px; color: #d4af37; }
+        .minimap {
+            top: 10px;
+            right: 10px;
+            width: 200px;
+            height: 200px;
+            background: rgba(0,0,0,0.8);
+            border: 2px solid #d4af37;
+            border-radius: 10px;
+        }
+        .chat {
+            bottom: 20px;
+            left: 10px;
+            width: 400px;
+            height: 200px;
+            background: rgba(0,0,0,0.7);
+            border-radius: 10px;
+            display: flex;
+            flex-direction: column;
+        }
+        .messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 10px;
+            font-size: 12px;
+        }
+        .chat input {
+            background: rgba(0,0,0,0.5);
+            border: none;
+            border-top: 1px solid #444;
+            color: white;
+            padding: 8px;
+            outline: none;
+        }
+        .settings-panel, .multiplayer-panel {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0,0,0,0.95);
+            border: 3px solid #d4af37;
+            border-radius: 15px;
+            padding: 30px;
+            min-width: 400px;
+            display: none;
+            color: white;
+        }
+        .settings-panel.active, .multiplayer-panel.active { display: block; }
+        .setting-row {
+            margin: 15px 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .btn {
+            background: #d4af37;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+            margin: 5px;
+        }
+        .btn:hover { background: #ffd700; }
+        .btn-close {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: #ff4444;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            border: none;
+            color: white;
+            cursor: pointer;
+            font-size: 18px;
+        }
+        .room-code {
+            background: rgba(255,255,255,0.1);
+            padding: 15px;
+            border-radius: 5px;
+            text-align: center;
+            font-size: 24px;
+            letter-spacing: 5px;
+            margin: 20px 0;
+            border: 2px dashed #d4af37;
+        }
+        .top-buttons {
+            position: absolute;
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 10px;
+        }
+        .top-btn {
+            background: rgba(0,0,0,0.8);
+            border: 2px solid #d4af37;
+            color: #d4af37;
+            padding: 8px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .top-btn:hover { background: rgba(212,175,55,0.3); }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas"></canvas>
+    
+    <div class="ui stats">
+        <div><strong id="playerName">Warrior</strong> - Level <span id="level">1</span></div>
+        <div style="margin-top: 10px;">
+            <div>HP: <span id="hpText">100/100</span></div>
+            <div class="bar"><div class="hp-fill" id="hpBar" style="width: 100%"></div></div>
+            <div>MP: <span id="mpText">50/50</span></div>
+            <div class="bar"><div class="mp-fill" id="mpBar" style="width: 100%"></div></div>
+            <div>XP: <span id="xpText">0/100</span></div>
+            <div class="bar"><div class="xp-fill" id="xpBar" style="width: 0%"></div></div>
+            <div style="margin-top: 5px;">Gold: <span id="gold" style="color: #ffd700;">0</span></div>
+        </div>
+    </div>
+    
+    <div class="ui minimap">
+        <canvas id="minimap" width="196" height="196"></canvas>
+    </div>
+    
+    <div class="ui skills">
+        <div class="skill" data-skill="attack">⚔️<span class="key">Q</span></div>
+        <div class="skill" data-skill="heal">❤️<span class="key">F</span></div>
+        <div class="skill" data-skill="fire">🔥<span class="key">E</span></div>
+        <div class="skill" data-skill="shield">🛡️<span class="key">R</span></div>
+    </div>
+    
+    <div class="ui chat">
+        <div class="messages" id="messages">
+            <div style="color: #ffd700;">🎮 Welcome to Dragon's Keep!</div>
+            <div style="color: #00ff00;">🎯 Movement: WASD or Arrow Keys + Click-to-Move</div>
+            <div style="color: #00ff00;">⚔️ Skills: Q=Attack, F=Heal, E=Fire, R=Shield</div>
+            <div style="color: #ffaa00;">💙 Mana auto-regenerates! Kill monsters before they kill you!</div>
+        </div>
+        <input type="text" id="chatInput" placeholder="Chat... (Enter)" maxlength="100">
+    </div>
+    
+    <!-- Top Buttons -->
+    <div class="ui top-buttons">
+        <button class="top-btn" onclick="toggleSettings()">⚙️ Settings</button>
+        <button class="top-btn" onclick="toggleMultiplayer()">👥 Multiplayer</button>
+    </div>
+    
+    <!-- Settings Panel -->
+    <div class="settings-panel" id="settingsPanel">
+        <button class="btn-close" onclick="toggleSettings()">×</button>
+        <h2 style="color: #d4af37; margin-bottom: 20px;">⚙️ Settings</h2>
+        
+        <div class="setting-row">
+            <span>Graphics Quality:</span>
+            <select id="graphicsQuality" onchange="updateSettings()">
+                <option value="low">Low</option>
+                <option value="medium" selected>Medium</option>
+                <option value="high">High</option>
+            </select>
+        </div>
+        
+        <div class="setting-row">
+            <span>Sound Effects:</span>
+            <input type="checkbox" id="soundEffects" checked onchange="updateSettings()">
+        </div>
+        
+        <div class="setting-row">
+            <span>Show Damage Numbers:</span>
+            <input type="checkbox" id="showDamage" checked onchange="updateSettings()">
+        </div>
+        
+        <div class="setting-row">
+            <span>Camera Smoothness:</span>
+            <input type="range" id="cameraSmooth" min="1" max="10" value="5" onchange="updateSettings()">
+        </div>
+        
+        <div class="setting-row">
+            <span>Player Speed:</span>
+            <input type="range" id="playerSpeed" min="3" max="10" value="5" onchange="updateSettings()">
+        </div>
+        
+        <div style="margin-top: 20px; text-align: center;">
+            <button class="btn" onclick="saveSettings()">💾 Save Settings</button>
+            <button class="btn" onclick="resetSettings()">🔄 Reset to Default</button>
+        </div>
+    </div>
+    
+    <!-- Multiplayer Panel -->
+    <div class="multiplayer-panel" id="multiplayerPanel">
+        <button class="btn-close" onclick="toggleMultiplayer()">×</button>
+        <h2 style="color: #d4af37; margin-bottom: 20px;">👥 Multiplayer</h2>
+        
+        <div style="text-align: center;">
+            <h3>Your Room Code:</h3>
+            <div class="room-code" id="roomCode">LOADING...</div>
+            <p style="color: #aaa; font-size: 12px;">Share this code with friends to play together!</p>
+            
+            <button class="btn" onclick="copyRoomCode()">📋 Copy Code</button>
+            <button class="btn" onclick="generateNewRoom()">🔄 New Room</button>
+        </div>
+        
+        <div style="margin-top: 30px;">
+            <h3>Join a Room:</h3>
+            <input type="text" id="joinRoomInput" placeholder="Enter room code..." 
+                   style="width: 100%; padding: 10px; margin: 10px 0; background: rgba(255,255,255,0.1); border: 1px solid #d4af37; color: white; border-radius: 5px;">
+            <button class="btn" onclick="joinRoom()" style="width: 100%;">🚪 Join Room</button>
+        </div>
+        
+        <div style="margin-top: 20px; padding: 10px; background: rgba(255,255,255,0.05); border-radius: 5px;">
+            <div style="font-size: 12px; color: #aaa;">
+                <strong>Players in room:</strong> <span id="playerCount">1</span>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const minimap = document.getElementById('minimap');
+        const minimapCtx = minimap.getContext('2d');
+        
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+        
+        // Game state
+        const game = {
+            player: { x: 400, y: 300, size: 20, speed: 5, angle: 0 },
+            stats: { hp: 100, maxHp: 100, mp: 50, maxMp: 50, level: 1, xp: 0, maxXp: 100, gold: 0 },
+            monsters: [],
+            keys: {},
+            moveTarget: null,
+            camera: { x: 0, y: 0 },
+            cooldowns: {}
+        };
+        
+        // Monster types
+        const monsterTypes = {
+            slime: { color: '#00ff00', hp: 50, damage: 5, xp: 15, size: 15 },
+            goblin: { color: '#90ee90', hp: 100, damage: 10, xp: 25, size: 18 },
+            orc: { color: '#2f4f2f', hp: 200, damage: 20, xp: 50, size: 25 },
+            boss: { color: '#ff0000', hp: 500, damage: 40, xp: 200, size: 40 }
+        };
+        
+        // Spawn monsters
+        for (let i = 0; i < 10; i++) {
+            const angle = Math.random() * Math.PI * 2;
+            const distance = 200 + Math.random() * 300;
+            const types = ['slime', 'goblin', 'orc'];
+            const type = types[Math.floor(Math.random() * types.length)];
+            const data = monsterTypes[type];
+            
+            game.monsters.push({
+                x: game.player.x + Math.cos(angle) * distance,
+                y: game.player.y + Math.sin(angle) * distance,
+                type: type,
+                hp: data.hp,
+                maxHp: data.hp,
+                size: data.size,
+                color: data.color,
+                spawnX: game.player.x + Math.cos(angle) * distance,
+                spawnY: game.player.y + Math.sin(angle) * distance
+            });
+        }
+        
+        // Boss
+        game.monsters.push({
+            x: game.player.x + 500,
+            y: game.player.y + 500,
+            type: 'boss',
+            hp: 500,
+            maxHp: 500,
+            size: 40,
+            color: '#ff0000',
+            spawnX: game.player.x + 500,
+            spawnY: game.player.y + 500
+        });
+        
+        // Settings
+        const settings = {
+            graphics: 'medium',
+            soundEffects: true,
+            showDamage: true,
+            cameraSmooth: 5,
+            playerSpeed: 5
+        };
+        
+        // Multiplayer
+        let roomCode = generateRoomCode();
+        let playersInRoom = 1;
+        
+        function generateRoomCode() {
+            return Math.random().toString(36).substring(2, 8).toUpperCase();
+        }
+        
+        function toggleSettings() {
+            document.getElementById('settingsPanel').classList.toggle('active');
+        }
+        
+        function toggleMultiplayer() {
+            document.getElementById('multiplayerPanel').classList.toggle('active');
+            document.getElementById('roomCode').textContent = roomCode;
+        }
+        
+        function updateSettings() {
+            settings.graphics = document.getElementById('graphicsQuality').value;
+            settings.soundEffects = document.getElementById('soundEffects').checked;
+            settings.showDamage = document.getElementById('showDamage').checked;
+            settings.cameraSmooth = document.getElementById('cameraSmooth').value;
+            settings.playerSpeed = document.getElementById('playerSpeed').value;
+            
+            game.player.speed = parseInt(settings.playerSpeed);
+        }
+        
+        function saveSettings() {
+            localStorage.setItem('rpg_settings', JSON.stringify(settings));
+            addMessage('✅ Settings saved!');
+            toggleSettings();
+        }
+        
+        function resetSettings() {
+            document.getElementById('graphicsQuality').value = 'medium';
+            document.getElementById('soundEffects').checked = true;
+            document.getElementById('showDamage').checked = true;
+            document.getElementById('cameraSmooth').value = 5;
+            document.getElementById('playerSpeed').value = 5;
+            updateSettings();
+            addMessage('🔄 Settings reset to default');
+        }
+        
+        function copyRoomCode() {
+            navigator.clipboard.writeText(roomCode).then(() => {
+                addMessage('📋 Room code copied: ' + roomCode);
+            });
+        }
+        
+        function generateNewRoom() {
+            roomCode = generateRoomCode();
+            document.getElementById('roomCode').textContent = roomCode;
+            addMessage('🔄 New room created: ' + roomCode);
+        }
+        
+        function joinRoom() {
+            const code = document.getElementById('joinRoomInput').value.trim().toUpperCase();
+            if (code) {
+                addMessage('🚪 Joining room: ' + code);
+                roomCode = code;
+                document.getElementById('roomCode').textContent = code;
+                toggleMultiplayer();
+            }
+        }
+        
+        // Input - W tuşu hareket için geri geldi!
+        window.addEventListener('keydown', e => {
+            // Chat aktifse skill'leri devre dışı bırak
+            if (document.activeElement.id === 'chatInput') return;
+            
+            // Hareket tuşları (W dahil!)
+            if (e.code === 'KeyW' || e.code === 'KeyA' || e.code === 'KeyS' || e.code === 'KeyD' || 
+                e.code === 'ArrowUp' || e.code === 'ArrowDown' || 
+                e.code === 'ArrowLeft' || e.code === 'ArrowRight') {
+                game.keys[e.code] = true;
+            }
+            
+            // Skill tuşları (F artık heal!)
+            if (e.code === 'KeyQ') useSkill('attack');
+            if (e.code === 'KeyF') useSkill('heal');
+            if (e.code === 'KeyE') useSkill('fire');
+            if (e.code === 'KeyR') useSkill('shield');
+            
+            // ESC ile menüleri kapat
+            if (e.code === 'Escape') {
+                document.getElementById('settingsPanel').classList.remove('active');
+                document.getElementById('multiplayerPanel').classList.remove('active');
+            }
+        });
+        
+        window.addEventListener('keyup', e => game.keys[e.code] = false);
+        
+        canvas.addEventListener('click', e => {
+            const worldX = e.clientX + game.camera.x;
+            const worldY = e.clientY + game.camera.y;
+            game.moveTarget = { x: worldX, y: worldY };
+        });
+        
+        // Skills
+        function useSkill(skill) {
+            if (game.cooldowns[skill]) return;
+            
+            switch(skill) {
+                case 'attack':
+                    if (game.stats.mp >= 5) {
+                        attackNearby(15);
+                        game.stats.mp -= 5;
+                        setCooldown(skill, 1000);
+                    }
+                    break;
+                case 'heal':
+                    if (game.stats.mp >= 15) {
+                        game.stats.hp = Math.min(game.stats.maxHp, game.stats.hp + 30);
+                        game.stats.mp -= 15;
+                        setCooldown(skill, 3000);
+                    }
+                    break;
+                case 'fire':
+                    if (game.stats.mp >= 20) {
+                        attackNearby(40);
+                        game.stats.mp -= 20;
+                        setCooldown(skill, 2000);
+                    }
+                    break;
+                case 'shield':
+                    if (game.stats.mp >= 10) {
+                        game.stats.mp -= 10;
+                        setCooldown(skill, 5000);
+                    }
+                    break;
+            }
+            updateUI();
+        }
+        
+        function setCooldown(skill, time) {
+            game.cooldowns[skill] = true;
+            const btn = document.querySelector(`[data-skill="${skill}"]`);
+            if (btn) btn.classList.add('cooldown');
+            setTimeout(() => {
+                delete game.cooldowns[skill];
+                if (btn) btn.classList.remove('cooldown');
+            }, time);
+        }
+        
+        function attackNearby(damage) {
+            game.monsters.forEach(m => {
+                const dist = Math.hypot(m.x - game.player.x, m.y - game.player.y);
+                if (dist < 100) {
+                    m.hp -= damage;
+                    if (m.hp <= 0) {
+                        const data = monsterTypes[m.type];
+                        game.stats.xp += data.xp;
+                        game.stats.gold += data.xp;
+                        
+                        if (game.stats.xp >= game.stats.maxXp) {
+                            game.stats.level++;
+                            game.stats.xp = 0;
+                            game.stats.maxHp += 20;
+                            game.stats.maxMp += 10;
+                            game.stats.hp = game.stats.maxHp;
+                            game.stats.mp = game.stats.maxMp;
+                            addMessage('🎉 LEVEL UP! Level ' + game.stats.level);
+                        }
+                        
+                        m.hp = m.maxHp;
+                        m.x = m.spawnX;
+                        m.y = m.spawnY;
+                    }
+                }
+            });
+            updateUI();
+        }
+        
+        function addMessage(msg) {
+            const div = document.createElement('div');
+            div.textContent = msg;
+            div.style.color = '#ffff00';
+            document.getElementById('messages').appendChild(div);
+        }
+        
+        function updateUI() {
+            document.getElementById('hpText').textContent = `${Math.floor(game.stats.hp)}/${game.stats.maxHp}`;
+            document.getElementById('mpText').textContent = `${Math.floor(game.stats.mp)}/${game.stats.maxMp}`;
+            document.getElementById('xpText').textContent = `${game.stats.xp}/${game.stats.maxXp}`;
+            document.getElementById('level').textContent = game.stats.level;
+            document.getElementById('gold').textContent = game.stats.gold;
+            
+            document.getElementById('hpBar').style.width = `${(game.stats.hp / game.stats.maxHp) * 100}%`;
+            document.getElementById('mpBar').style.width = `${(game.stats.mp / game.stats.maxMp) * 100}%`;
+            document.getElementById('xpBar').style.width = `${(game.stats.xp / game.stats.maxXp) * 100}%`;
+        }
+        
+        // Game loop
+        function update() {
+            // WASD movement (W geri geldi!)
+            let moved = false;
+            if (game.keys['KeyW'] || game.keys['ArrowUp']) {
+                game.player.y -= game.player.speed;
+                moved = true;
+            }
+            if (game.keys['KeyS'] || game.keys['ArrowDown']) {
+                game.player.y += game.player.speed;
+                moved = true;
+            }
+            if (game.keys['KeyA'] || game.keys['ArrowLeft']) {
+                game.player.x -= game.player.speed;
+                moved = true;
+            }
+            if (game.keys['KeyD'] || game.keys['ArrowRight']) {
+                game.player.x += game.player.speed;
+                moved = true;
+            }
+            
+            // Otomatik mana yenileme (saniyede 1 MP)
+            if (game.stats.mp < game.stats.maxMp) {
+                game.stats.mp = Math.min(game.stats.maxMp, game.stats.mp + 0.05);
+                updateUI();
+            }
+            
+            if (moved) game.moveTarget = null;
+            
+            // Click-to-move
+            if (game.moveTarget) {
+                const dx = game.moveTarget.x - game.player.x;
+                const dy = game.moveTarget.y - game.player.y;
+                const dist = Math.hypot(dx, dy);
+                
+                if (dist > 5) {
+                    game.player.x += (dx / dist) * game.player.speed;
+                    game.player.y += (dy / dist) * game.player.speed;
+                    game.player.angle = Math.atan2(dy, dx);
+                } else {
+                    game.moveTarget = null;
+                }
+            }
+            
+            // Camera follow
+            game.camera.x = game.player.x - canvas.width / 2;
+            game.camera.y = game.player.y - canvas.height / 2;
+            
+            // Monster AI and Damage
+            game.monsters.forEach(m => {
+                const dist = Math.hypot(m.x - game.player.x, m.y - game.player.y);
+                
+                // Chase player
+                if (dist < 200 && dist > 30) {
+                    const dx = game.player.x - m.x;
+                    const dy = game.player.y - m.y;
+                    m.x += (dx / dist) * 2;
+                    m.y += (dy / dist) * 2;
+                }
+                
+                // Attack player when close
+                if (dist < 30) {
+                    const data = monsterTypes[m.type];
+                    if (!m.lastAttack || Date.now() - m.lastAttack > 1000) {
+                        game.stats.hp -= data.damage;
+                        m.lastAttack = Date.now();
+                        
+                        // Show damage on player
+                        showPlayerDamage(data.damage);
+                        
+                        // Check if player died
+                        if (game.stats.hp <= 0) {
+                            game.stats.hp = 0;
+                            respawnPlayer();
+                        }
+                        updateUI();
+                    }
+                }
+            });
+        }
+        
+        function showPlayerDamage(amount) {
+            const div = document.createElement('div');
+            div.style.position = 'absolute';
+            div.style.left = '50%';
+            div.style.top = '50%';
+            div.style.transform = 'translate(-50%, -50%)';
+            div.style.color = '#ff0000';
+            div.style.fontWeight = 'bold';
+            div.style.fontSize = '30px';
+            div.style.pointerEvents = 'none';
+            div.style.textShadow = '2px 2px 4px #000';
+            div.textContent = '-' + amount + ' HP';
+            document.body.appendChild(div);
+            
+            let offset = 0;
+            const interval = setInterval(() => {
+                offset += 3;
+                div.style.top = `calc(50% - ${offset}px)`;
+                div.style.opacity = 1 - (offset / 60);
+            }, 16);
+            
+            setTimeout(() => {
+                clearInterval(interval);
+                div.remove();
+            }, 600);
+        }
+        
+        function respawnPlayer() {
+            game.player.x = 400;
+            game.player.y = 300;
+            game.stats.hp = game.stats.maxHp;
+            game.stats.mp = game.stats.maxMp;
+            addMessage('💀 You died! Respawned at starting point.');
+            updateUI();
+        }
+        
+        function draw() {
+            ctx.fillStyle = '#2d5016';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Grid
+            ctx.strokeStyle = '#1a3010';
+            for (let x = -game.camera.x % 50; x < canvas.width; x += 50) {
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, canvas.height);
+                ctx.stroke();
+            }
+            for (let y = -game.camera.y % 50; y < canvas.height; y += 50) {
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(canvas.width, y);
+                ctx.stroke();
+            }
+            
+            // Monsters
+            game.monsters.forEach(m => {
+                const screenX = m.x - game.camera.x;
+                const screenY = m.y - game.camera.y;
+                
+                ctx.fillStyle = m.color;
+                ctx.beginPath();
+                ctx.arc(screenX, screenY, m.size, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // HP bar
+                if (m.hp < m.maxHp) {
+                    ctx.fillStyle = '#ff0000';
+                    ctx.fillRect(screenX - 20, screenY - m.size - 10, 40 * (m.hp / m.maxHp), 5);
+                    ctx.strokeStyle = '#000';
+                    ctx.strokeRect(screenX - 20, screenY - m.size - 10, 40, 5);
+                }
+            });
+            
+            // Player
+            const screenX = game.player.x - game.camera.x;
+            const screenY = game.player.y - game.camera.y;
+            
+            ctx.fillStyle = '#ff8000';
+            ctx.beginPath();
+            ctx.arc(screenX, screenY, game.player.size, 0, Math.PI * 2);
+            ctx.fill();
+            
+            ctx.strokeStyle = '#ffd700';
+            ctx.lineWidth = 3;
+            ctx.stroke();
+            
+            // Minimap
+            minimapCtx.fillStyle = '#1a1a1a';
+            minimapCtx.fillRect(0, 0, 196, 196);
+            
+            minimapCtx.fillStyle = '#00ff00';
+            minimapCtx.fillRect(98, 98, 4, 4);
+            
+            game.monsters.forEach(m => {
+                const mx = 98 + (m.x - game.player.x) / 10;
+                const my = 98 + (m.y - game.player.y) / 10;
+                minimapCtx.fillStyle = m.type === 'boss' ? '#ff0000' : '#ff8888';
+                minimapCtx.fillRect(mx - 2, my - 2, 4, 4);
+            });
+        }
+        
+        function gameLoop() {
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+        
+        gameLoop();
+        updateUI();
+        
+        window.addEventListener('resize', () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        });
+        
+        document.getElementById('chatInput').addEventListener('keypress', e => {
+            if (e.key === 'Enter' && e.target.value.trim()) {
+                addMessage('[You] ' + e.target.value);
+                e.target.value = '';
+            }
+        });
+    </script>
+</body>
+</html>

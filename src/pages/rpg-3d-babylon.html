@@ -1,0 +1,696 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dragon's Keep - 3D RPG (Babylon.js)</title>
+    <script src="https://cdn.babylonjs.com/babylon.js"></script>
+    <script src="https://cdn.babylonjs.com/loaders/babylonjs.loaders.min.js"></script>
+    <script src="https://cdn.babylonjs.com/materialsLibrary/babylonjs.materials.min.js"></script>
+    <script src="https://cdn.babylonjs.com/gui/babylon.gui.min.js"></script>
+    <script src="https://cdn.babylonjs.com/cannon.js"></script>
+    <script src="/socket.io/socket.io.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=MedievalSharp&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+        }
+
+        body, html {
+            width: 100%;
+            height: 100%;
+            font-family: 'MedievalSharp', cursive;
+        }
+
+        #renderCanvas {
+            width: 100%;
+            height: 100%;
+            touch-action: none;
+            display: block;
+        }
+
+        #loadingScreen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            transition: opacity 0.5s;
+        }
+
+        #loadingScreen.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .loading-title {
+            font-size: 3rem;
+            color: #d4af37;
+            text-shadow: 0 0 20px rgba(212, 175, 55, 0.5);
+            margin-bottom: 2rem;
+        }
+
+        .loading-bar {
+            width: 400px;
+            height: 10px;
+            background: rgba(0, 0, 0, 0.5);
+            border-radius: 5px;
+            overflow: hidden;
+        }
+
+        .loading-progress {
+            height: 100%;
+            background: linear-gradient(90deg, #8b5a2b, #d4af37);
+            width: 0%;
+            transition: width 0.3s;
+        }
+
+        .loading-text {
+            color: #ffd700;
+            margin-top: 1rem;
+            font-size: 1.2rem;
+        }
+    </style>
+</head>
+<body>
+    <div id="loadingScreen">
+        <h1 class="loading-title">Dragon's Keep</h1>
+        <div class="loading-bar">
+            <div class="loading-progress" id="loadingProgress"></div>
+        </div>
+        <div class="loading-text" id="loadingText">3D Dünya Yükleniyor...</div>
+    </div>
+    
+    <canvas id="renderCanvas"></canvas>
+
+    <script>
+        class DragonKeep3DRPG {
+            constructor() {
+                this.canvas = document.getElementById('renderCanvas');
+                this.engine = new BABYLON.Engine(this.canvas, true, {
+                    preserveDrawingBuffer: true,
+                    stencil: true,
+                    disableWebGL2Support: false
+                });
+                
+                // Optimize engine
+                this.engine.enableOfflineSupport = false;
+                this.engine.doNotHandleContextLost = true;
+                
+                this.scene = null;
+                this.camera = null;
+                this.player = null;
+                this.monsters = [];
+                this.socket = io();
+                
+                this.keys = {};
+                this.playerSpeed = 0.3;
+                this.playerRotationSpeed = 0.05;
+                
+                this.init();
+            }
+
+            async init() {
+                try {
+                    this.updateLoading(20, 'Babylon.js yükleniyor...');
+                    await this.createScene();
+                    this.updateLoading(60, '3D Dünya oluşturuluyor...');
+                    this.setupControls();
+                    this.updateLoading(80, 'Kontroller hazırlanıyor...');
+                    this.setupNetworking();
+                    this.updateLoading(90, 'Bağlantı kuruluyor...');
+                    this.startRenderLoop();
+                    this.updateLoading(100, 'Hazır!');
+                    this.hideLoadingScreen();
+                } catch (error) {
+                    console.error('Initialization error:', error);
+                    document.getElementById('loadingText').textContent = 'Hata: ' + error.message;
+                }
+            }
+
+            updateLoading(percent, text) {
+                document.getElementById('loadingProgress').style.width = percent + '%';
+                document.getElementById('loadingText').textContent = text;
+            }
+
+            async createScene() {
+                this.scene = new BABYLON.Scene(this.engine);
+                this.scene.clearColor = new BABYLON.Color3(0.53, 0.81, 0.92); // Sky blue
+                
+                // Enable physics (optional)
+                try {
+                    if (typeof CANNON !== 'undefined') {
+                        this.scene.enablePhysics(new BABYLON.Vector3(0, -9.81, 0), new BABYLON.CannonJSPlugin());
+                        console.log('Physics enabled');
+                    }
+                } catch (e) {
+                    console.warn('Physics not available, continuing without it');
+                }
+                
+                // Optimize scene
+                this.scene.autoClear = false;
+                this.scene.autoClearDepthAndStencil = false;
+                this.scene.blockMaterialDirtyMechanism = true;
+                
+                // Create camera
+                this.createCamera();
+                
+                // Create lighting
+                this.createLighting();
+                
+                // Create world
+                await this.createWorld();
+                
+                // Create player
+                this.createPlayer();
+                
+                // Spawn monsters
+                this.spawnMonsters();
+                
+                // Create skybox
+                this.createSkybox();
+                
+                // Post-processing for quality
+                this.setupPostProcessing();
+                
+                return this.scene;
+            }
+
+            createCamera() {
+                // Third-person camera
+                this.camera = new BABYLON.ArcRotateCamera(
+                    "camera",
+                    -Math.PI / 2,
+                    Math.PI / 3,
+                    15,
+                    new BABYLON.Vector3(0, 2, 0),
+                    this.scene
+                );
+                
+                this.camera.lowerRadiusLimit = 5;
+                this.camera.upperRadiusLimit = 25;
+                this.camera.lowerBetaLimit = 0.1;
+                this.camera.upperBetaLimit = Math.PI / 2.2;
+                
+                this.camera.attachControl(this.canvas, true);
+                this.camera.wheelPrecision = 50;
+                this.camera.panningSensibility = 0;
+            }
+
+            createLighting() {
+                // Hemisphere light (ambient)
+                const hemiLight = new BABYLON.HemisphericLight(
+                    "hemiLight",
+                    new BABYLON.Vector3(0, 1, 0),
+                    this.scene
+                );
+                hemiLight.intensity = 0.6;
+                hemiLight.groundColor = new BABYLON.Color3(0.2, 0.3, 0.1);
+                
+                // Directional light (sun)
+                const sunLight = new BABYLON.DirectionalLight(
+                    "sunLight",
+                    new BABYLON.Vector3(-1, -2, -1),
+                    this.scene
+                );
+                sunLight.position = new BABYLON.Vector3(20, 40, 20);
+                sunLight.intensity = 0.8;
+                
+                // Shadows
+                const shadowGenerator = new BABYLON.ShadowGenerator(2048, sunLight);
+                shadowGenerator.useBlurExponentialShadowMap = true;
+                shadowGenerator.blurKernel = 32;
+                shadowGenerator.depthScale = 50;
+                
+                this.shadowGenerator = shadowGenerator;
+            }
+
+            async createWorld() {
+                // Ground with texture
+                const ground = BABYLON.MeshBuilder.CreateGround("ground", {
+                    width: 200,
+                    height: 200,
+                    subdivisions: 50
+                }, this.scene);
+                
+                const groundMaterial = new BABYLON.StandardMaterial("groundMat", this.scene);
+                groundMaterial.diffuseColor = new BABYLON.Color3(0.24, 0.35, 0.13);
+                groundMaterial.specularColor = new BABYLON.Color3(0.1, 0.1, 0.1);
+                
+                // Add grass texture effect
+                const grassTexture = new BABYLON.Texture("https://www.babylonjs-playground.com/textures/grass.jpg", this.scene);
+                grassTexture.uScale = 50;
+                grassTexture.vScale = 50;
+                groundMaterial.diffuseTexture = grassTexture;
+                
+                ground.material = groundMaterial;
+                ground.receiveShadows = true;
+                
+                // Physics (optional)
+                try {
+                    if (this.scene.getPhysicsEngine()) {
+                        ground.physicsImpostor = new BABYLON.PhysicsImpostor(
+                            ground,
+                            BABYLON.PhysicsImpostor.BoxImpostor,
+                            { mass: 0, restitution: 0.1 },
+                            this.scene
+                        );
+                    }
+                } catch (e) {
+                    console.warn('Ground physics not enabled');
+                }
+                
+                // Create trees
+                this.createTrees();
+                
+                // Create rocks
+                this.createRocks();
+                
+                // Create flowers
+                this.createFlowers();
+            }
+
+            createTrees() {
+                for (let i = 0; i < 30; i++) {
+                    const tree = this.createTree();
+                    const x = (Math.random() - 0.5) * 180;
+                    const z = (Math.random() - 0.5) * 180;
+                    tree.position = new BABYLON.Vector3(x, 0, z);
+                    
+                    this.shadowGenerator.addShadowCaster(tree);
+                }
+            }
+
+            createTree() {
+                const tree = new BABYLON.TransformNode("tree", this.scene);
+                
+                // Trunk
+                const trunk = BABYLON.MeshBuilder.CreateCylinder("trunk", {
+                    height: 6,
+                    diameterTop: 0.8,
+                    diameterBottom: 1.2,
+                    tessellation: 8
+                }, this.scene);
+                trunk.position.y = 3;
+                trunk.parent = tree;
+                
+                const trunkMat = new BABYLON.StandardMaterial("trunkMat", this.scene);
+                trunkMat.diffuseColor = new BABYLON.Color3(0.55, 0.27, 0.07);
+                trunk.material = trunkMat;
+                
+                // Crown (multiple spheres for better look)
+                for (let i = 0; i < 3; i++) {
+                    const crown = BABYLON.MeshBuilder.CreateSphere("crown", {
+                        diameter: 5 + Math.random() * 2,
+                        segments: 8
+                    }, this.scene);
+                    crown.position.y = 6 + i * 1.5;
+                    crown.position.x = (Math.random() - 0.5) * 2;
+                    crown.position.z = (Math.random() - 0.5) * 2;
+                    crown.parent = tree;
+                    
+                    const crownMat = new BABYLON.StandardMaterial("crownMat", this.scene);
+                    crownMat.diffuseColor = new BABYLON.Color3(0.13, 0.55, 0.13);
+                    crown.material = crownMat;
+                }
+                
+                return tree;
+            }
+
+            createRocks() {
+                for (let i = 0; i < 25; i++) {
+                    const rock = BABYLON.MeshBuilder.CreatePolyhedron("rock", {
+                        type: Math.floor(Math.random() * 5),
+                        size: Math.random() * 2 + 1
+                    }, this.scene);
+                    
+                    rock.position.x = (Math.random() - 0.5) * 180;
+                    rock.position.y = 1;
+                    rock.position.z = (Math.random() - 0.5) * 180;
+                    rock.rotation.y = Math.random() * Math.PI * 2;
+                    
+                    const rockMat = new BABYLON.StandardMaterial("rockMat", this.scene);
+                    rockMat.diffuseColor = new BABYLON.Color3(0.4, 0.4, 0.4);
+                    rock.material = rockMat;
+                    
+                    this.shadowGenerator.addShadowCaster(rock);
+                }
+            }
+
+            createFlowers() {
+                for (let i = 0; i < 50; i++) {
+                    const flower = BABYLON.MeshBuilder.CreateSphere("flower", {
+                        diameter: 0.3,
+                        segments: 6
+                    }, this.scene);
+                    
+                    flower.position.x = (Math.random() - 0.5) * 180;
+                    flower.position.y = 0.3;
+                    flower.position.z = (Math.random() - 0.5) * 180;
+                    
+                    const flowerMat = new BABYLON.StandardMaterial("flowerMat", this.scene);
+                    const colors = [
+                        new BABYLON.Color3(1, 0.4, 0.7),  // Pink
+                        new BABYLON.Color3(1, 1, 0),      // Yellow
+                        new BABYLON.Color3(1, 0.5, 0)     // Orange
+                    ];
+                    flowerMat.diffuseColor = colors[Math.floor(Math.random() * colors.length)];
+                    flowerMat.emissiveColor = flowerMat.diffuseColor.scale(0.3);
+                    flower.material = flowerMat;
+                }
+            }
+
+            createPlayer() {
+                // Player body (capsule)
+                const playerBody = BABYLON.MeshBuilder.CreateCapsule("player", {
+                    radius: 0.5,
+                    height: 2,
+                    tessellation: 16
+                }, this.scene);
+                playerBody.position.y = 1;
+                
+                const playerMat = new BABYLON.StandardMaterial("playerMat", this.scene);
+                playerMat.diffuseColor = new BABYLON.Color3(0.55, 0.35, 0.17);
+                playerMat.emissiveColor = new BABYLON.Color3(0.1, 0.1, 0.05);
+                playerBody.material = playerMat;
+                
+                // Player head
+                const head = BABYLON.MeshBuilder.CreateSphere("head", {
+                    diameter: 0.8,
+                    segments: 12
+                }, this.scene);
+                head.position.y = 2.2;
+                head.parent = playerBody;
+                
+                const headMat = new BABYLON.StandardMaterial("headMat", this.scene);
+                headMat.diffuseColor = new BABYLON.Color3(0.83, 0.69, 0.22);
+                headMat.emissiveColor = new BABYLON.Color3(0.2, 0.15, 0.05);
+                head.material = headMat;
+                
+                // Add glow effect
+                const glow = new BABYLON.GlowLayer("glow", this.scene);
+                glow.intensity = 0.5;
+                
+                // Physics (optional)
+                try {
+                    if (this.scene.getPhysicsEngine()) {
+                        playerBody.physicsImpostor = new BABYLON.PhysicsImpostor(
+                            playerBody,
+                            BABYLON.PhysicsImpostor.CapsuleImpostor,
+                            { mass: 1, friction: 0.5, restitution: 0 },
+                            this.scene
+                        );
+                    }
+                } catch (e) {
+                    console.warn('Player physics not enabled');
+                }
+                
+                this.player = playerBody;
+                this.shadowGenerator.addShadowCaster(playerBody);
+                this.shadowGenerator.addShadowCaster(head);
+                
+                // Camera follows player
+                this.camera.lockedTarget = playerBody;
+            }
+
+            spawnMonsters() {
+                const monsterTypes = ['slime', 'goblin', 'orc'];
+                
+                for (let i = 0; i < 10; i++) {
+                    const type = monsterTypes[Math.floor(Math.random() * monsterTypes.length)];
+                    const monster = this.createMonster(type);
+                    
+                    const angle = Math.random() * Math.PI * 2;
+                    const distance = 20 + Math.random() * 30;
+                    monster.position.x = Math.cos(angle) * distance;
+                    monster.position.z = Math.sin(angle) * distance;
+                    
+                    this.monsters.push(monster);
+                }
+            }
+
+            createMonster(type) {
+                let monster;
+                
+                switch (type) {
+                    case 'slime':
+                        monster = this.createSlime();
+                        break;
+                    case 'goblin':
+                        monster = this.createGoblin();
+                        break;
+                    case 'orc':
+                        monster = this.createOrc();
+                        break;
+                }
+                
+                monster.monsterType = type;
+                this.shadowGenerator.addShadowCaster(monster);
+                
+                return monster;
+            }
+
+            createSlime() {
+                const slime = BABYLON.MeshBuilder.CreateSphere("slime", {
+                    diameter: 2,
+                    segments: 16
+                }, this.scene);
+                slime.position.y = 1;
+                slime.scaling.y = 0.7;
+                
+                const slimeMat = new BABYLON.StandardMaterial("slimeMat", this.scene);
+                const colors = [
+                    new BABYLON.Color3(0.2, 0.8, 0.2),  // Green
+                    new BABYLON.Color3(1, 0.4, 0.7),    // Pink
+                    new BABYLON.Color3(0, 0.75, 1)      // Blue
+                ];
+                slimeMat.diffuseColor = colors[Math.floor(Math.random() * colors.length)];
+                slimeMat.alpha = 0.8;
+                slimeMat.emissiveColor = slimeMat.diffuseColor.scale(0.3);
+                slime.material = slimeMat;
+                
+                // Bounce animation
+                const bounceAnim = new BABYLON.Animation(
+                    "bounce",
+                    "position.y",
+                    30,
+                    BABYLON.Animation.ANIMATIONTYPE_FLOAT,
+                    BABYLON.Animation.ANIMATIONLOOPMODE_CYCLE
+                );
+                
+                const keys = [
+                    { frame: 0, value: 1 },
+                    { frame: 15, value: 1.5 },
+                    { frame: 30, value: 1 }
+                ];
+                
+                bounceAnim.setKeys(keys);
+                slime.animations.push(bounceAnim);
+                this.scene.beginAnimation(slime, 0, 30, true);
+                
+                return slime;
+            }
+
+            createGoblin() {
+                const goblin = new BABYLON.TransformNode("goblin", this.scene);
+                
+                // Body
+                const body = BABYLON.MeshBuilder.CreateBox("goblinBody", {
+                    width: 1,
+                    height: 1.5,
+                    depth: 0.8
+                }, this.scene);
+                body.position.y = 1.5;
+                body.parent = goblin;
+                
+                const bodyMat = new BABYLON.StandardMaterial("goblinBodyMat", this.scene);
+                bodyMat.diffuseColor = new BABYLON.Color3(0.55, 0.27, 0.07);
+                body.material = bodyMat;
+                
+                // Head
+                const head = BABYLON.MeshBuilder.CreateSphere("goblinHead", {
+                    diameter: 1,
+                    segments: 12
+                }, this.scene);
+                head.position.y = 2.5;
+                head.parent = goblin;
+                
+                const headMat = new BABYLON.StandardMaterial("goblinHeadMat", this.scene);
+                headMat.diffuseColor = new BABYLON.Color3(0.56, 0.93, 0.56);
+                head.material = headMat;
+                
+                // Ears
+                const ear1 = BABYLON.MeshBuilder.CreateSphere("ear", {
+                    diameter: 0.4,
+                    segments: 8
+                }, this.scene);
+                ear1.position = new BABYLON.Vector3(-0.6, 2.5, 0);
+                ear1.scaling.x = 2;
+                ear1.parent = goblin;
+                ear1.material = headMat;
+                
+                const ear2 = ear1.clone("ear2");
+                ear2.position.x = 0.6;
+                ear2.parent = goblin;
+                
+                return goblin;
+            }
+
+            createOrc() {
+                const orc = new BABYLON.TransformNode("orc", this.scene);
+                
+                // Body (larger than goblin)
+                const body = BABYLON.MeshBuilder.CreateBox("orcBody", {
+                    width: 1.5,
+                    height: 2.5,
+                    depth: 1.2
+                }, this.scene);
+                body.position.y = 2;
+                body.parent = orc;
+                
+                const bodyMat = new BABYLON.StandardMaterial("orcBodyMat", this.scene);
+                bodyMat.diffuseColor = new BABYLON.Color3(0.18, 0.31, 0.18);
+                body.material = bodyMat;
+                
+                // Head
+                const head = BABYLON.MeshBuilder.CreateSphere("orcHead", {
+                    diameter: 1.5,
+                    segments: 12
+                }, this.scene);
+                head.position.y = 3.5;
+                head.parent = orc;
+                
+                const headMat = new BABYLON.StandardMaterial("orcHeadMat", this.scene);
+                headMat.diffuseColor = new BABYLON.Color3(0.34, 0.42, 0.18);
+                head.material = headMat;
+                
+                // Tusks
+                const tusk1 = BABYLON.MeshBuilder.CreateCylinder("tusk", {
+                    height: 0.8,
+                    diameter: 0.15
+                }, this.scene);
+                tusk1.position = new BABYLON.Vector3(-0.3, 3.2, 0.6);
+                tusk1.rotation.x = Math.PI / 6;
+                tusk1.parent = orc;
+                
+                const tuskMat = new BABYLON.StandardMaterial("tuskMat", this.scene);
+                tuskMat.diffuseColor = new BABYLON.Color3(1, 1, 0.9);
+                tusk1.material = tuskMat;
+                
+                const tusk2 = tusk1.clone("tusk2");
+                tusk2.position.x = 0.3;
+                tusk2.parent = orc;
+                
+                return orc;
+            }
+
+            createSkybox() {
+                const skybox = BABYLON.MeshBuilder.CreateBox("skyBox", { size: 1000 }, this.scene);
+                const skyboxMaterial = new BABYLON.StandardMaterial("skyBox", this.scene);
+                skyboxMaterial.backFaceCulling = false;
+                skyboxMaterial.reflectionTexture = new BABYLON.CubeTexture("https://www.babylonjs-playground.com/textures/skybox", this.scene);
+                skyboxMaterial.reflectionTexture.coordinatesMode = BABYLON.Texture.SKYBOX_MODE;
+                skyboxMaterial.diffuseColor = new BABYLON.Color3(0, 0, 0);
+                skyboxMaterial.specularColor = new BABYLON.Color3(0, 0, 0);
+                skybox.material = skyboxMaterial;
+            }
+
+            setupPostProcessing() {
+                // FXAA for anti-aliasing
+                const fxaa = new BABYLON.FxaaPostProcess("fxaa", 1.0, this.camera);
+                
+                // Sharpen for better quality
+                const sharpen = new BABYLON.SharpenPostProcess("sharpen", 1.0, this.camera);
+                sharpen.edgeAmount = 0.3;
+                sharpen.colorAmount = 1.0;
+            }
+
+            setupControls() {
+                window.addEventListener('keydown', (e) => {
+                    this.keys[e.code] = true;
+                });
+
+                window.addEventListener('keyup', (e) => {
+                    this.keys[e.code] = false;
+                });
+            }
+
+            updatePlayer() {
+                if (!this.player) return;
+
+                let moved = false;
+                const forward = this.camera.getForwardRay().direction;
+                forward.y = 0;
+                forward.normalize();
+
+                const right = BABYLON.Vector3.Cross(forward, BABYLON.Vector3.Up());
+
+                if (this.keys['KeyW'] || this.keys['ArrowUp']) {
+                    this.player.position.addInPlace(forward.scale(this.playerSpeed));
+                    moved = true;
+                }
+                if (this.keys['KeyS'] || this.keys['ArrowDown']) {
+                    this.player.position.addInPlace(forward.scale(-this.playerSpeed));
+                    moved = true;
+                }
+                if (this.keys['KeyA'] || this.keys['ArrowLeft']) {
+                    this.player.position.addInPlace(right.scale(-this.playerSpeed));
+                    moved = true;
+                }
+                if (this.keys['KeyD'] || this.keys['ArrowRight']) {
+                    this.player.position.addInPlace(right.scale(this.playerSpeed));
+                    moved = true;
+                }
+
+                // Rotate player to face movement direction
+                if (moved) {
+                    const moveDir = new BABYLON.Vector3(0, 0, 0);
+                    if (this.keys['KeyW']) moveDir.addInPlace(forward);
+                    if (this.keys['KeyS']) moveDir.addInPlace(forward.scale(-1));
+                    if (this.keys['KeyA']) moveDir.addInPlace(right.scale(-1));
+                    if (this.keys['KeyD']) moveDir.addInPlace(right);
+                    
+                    const angle = Math.atan2(moveDir.x, moveDir.z);
+                    this.player.rotation.y = angle;
+                }
+            }
+
+            setupNetworking() {
+                this.socket.on('connect', () => {
+                    console.log('Connected to server');
+                });
+            }
+
+            startRenderLoop() {
+                this.engine.runRenderLoop(() => {
+                    this.updatePlayer();
+                    this.scene.render();
+                });
+
+                window.addEventListener('resize', () => {
+                    this.engine.resize();
+                });
+            }
+
+            hideLoadingScreen() {
+                setTimeout(() => {
+                    document.getElementById('loadingScreen').classList.add('hidden');
+                }, 1000);
+            }
+        }
+
+        // Start the game
+        window.addEventListener('DOMContentLoaded', () => {
+            new DragonKeep3DRPG();
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,1267 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Dragon's Keep - Professional RPG</title>
+    <script src="https://cdn.babylonjs.com/babylon.max.js"></script>
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        // Error handling
+        window.addEventListener('error', function(e) {
+            console.error('Error:', e.message);
+            document.body.innerHTML = '<div style="color:white;padding:20px;background:#000;">Error: ' + e.message + '</div>';
+        });
+    </script>
+    <style>
+        * { margin: 0; padding: 0; }
+        body, html { width: 100%; height: 100%; overflow: hidden; }
+        #canvas { width: 100%; height: 100%; display: block; }
+        
+        /* UI Container */
+        .ui-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; font-family: Arial; }
+        .ui-container > * { pointer-events: auto; }
+        
+        /* Top Left - Player Stats */
+        .player-stats {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(0,0,0,0.8);
+            padding: 15px;
+            border-radius: 10px;
+            color: white;
+            min-width: 250px;
+        }
+        .stat-bar {
+            width: 100%;
+            height: 20px;
+            background: #333;
+            border-radius: 5px;
+            overflow: hidden;
+            margin: 5px 0;
+        }
+        .hp-bar { background: linear-gradient(90deg, #c41e3a, #ff4444); height: 100%; transition: width 0.3s; }
+        .mp-bar { background: linear-gradient(90deg, #0070dd, #4444ff); height: 100%; transition: width 0.3s; }
+        .xp-bar { background: linear-gradient(90deg, #ffd700, #ffff00); height: 100%; transition: width 0.3s; }
+        
+        /* Bottom Right - Skills */
+        .skill-bar {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            display: flex;
+            gap: 10px;
+        }
+        .skill-slot {
+            width: 60px;
+            height: 60px;
+            background: rgba(0,0,0,0.8);
+            border: 2px solid #d4af37;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            cursor: pointer;
+            position: relative;
+        }
+        .skill-slot:hover { background: rgba(212,175,55,0.3); }
+        .skill-slot.cooldown { opacity: 0.5; cursor: not-allowed; }
+        .skill-key {
+            position: absolute;
+            bottom: 2px;
+            right: 4px;
+            font-size: 10px;
+            color: #d4af37;
+        }
+        
+        /* Top Right - Minimap */
+        .minimap {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            width: 200px;
+            height: 200px;
+            background: rgba(0,0,0,0.8);
+            border: 2px solid #d4af37;
+            border-radius: 10px;
+        }
+        
+        /* Bottom Left - Chat */
+        .chat-box {
+            position: absolute;
+            bottom: 20px;
+            left: 10px;
+            width: 400px;
+            height: 200px;
+            background: rgba(0,0,0,0.7);
+            border-radius: 10px;
+            display: flex;
+            flex-direction: column;
+        }
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 10px;
+            color: white;
+            font-size: 12px;
+        }
+        .chat-input {
+            padding: 5px;
+            background: rgba(0,0,0,0.5);
+            border-top: 1px solid #444;
+        }
+        .chat-input input {
+            width: 100%;
+            background: transparent;
+            border: none;
+            color: white;
+            padding: 5px;
+            outline: none;
+        }
+        
+        /* Inventory Panel */
+        .inventory {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 600px;
+            background: rgba(0,0,0,0.95);
+            border: 3px solid #d4af37;
+            border-radius: 15px;
+            padding: 20px;
+            display: none;
+        }
+        .inventory.active { display: block; }
+        .inventory-grid {
+            display: grid;
+            grid-template-columns: repeat(8, 1fr);
+            gap: 5px;
+            margin-top: 10px;
+        }
+        .inventory-slot {
+            width: 60px;
+            height: 60px;
+            background: rgba(50,50,50,0.8);
+            border: 1px solid #666;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        .inventory-slot:hover { border-color: #d4af37; }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    
+    <div class="ui-container">
+        <!-- Player Stats -->
+        <div class="player-stats">
+            <div><strong id="playerName">Savaşçı</strong> - Level <span id="playerLevel">1</span></div>
+            <div style="font-size: 11px; color: #aaa;" id="playerClass">Warrior</div>
+            <div style="margin-top: 10px;">
+                <div>HP: <span id="hpText">100/100</span></div>
+                <div class="stat-bar"><div class="hp-bar" id="hpBar" style="width: 100%"></div></div>
+                <div>MP: <span id="mpText">50/50</span></div>
+                <div class="stat-bar"><div class="mp-bar" id="mpBar" style="width: 100%"></div></div>
+                <div>XP: <span id="xpText">0/100</span></div>
+                <div class="stat-bar"><div class="xp-bar" id="xpBar" style="width: 0%"></div></div>
+            </div>
+            <div style="margin-top: 10px; font-size: 11px;">
+                <div>Gold: <span id="goldText" style="color: #ffd700;">0</span></div>
+            </div>
+        </div>
+        
+        <!-- Minimap -->
+        <div class="minimap">
+            <canvas id="minimapCanvas" width="196" height="196"></canvas>
+        </div>
+        
+        <!-- Skills -->
+        <div class="skill-bar">
+            <div class="skill-slot" data-skill="attack" title="Saldırı">⚔️<span class="skill-key">Q</span></div>
+            <div class="skill-slot" data-skill="heal" title="İyileştirme">❤️<span class="skill-key">W</span></div>
+            <div class="skill-slot" data-skill="fireball" title="Ateş Topu">🔥<span class="skill-key">E</span></div>
+            <div class="skill-slot" data-skill="shield" title="Kalkan">🛡️<span class="skill-key">R</span></div>
+        </div>
+        
+        <!-- Chat -->
+        <div class="chat-box">
+            <div class="chat-messages" id="chatMessages">
+                <div style="color: #ffd700;">Hoş geldiniz Dragon's Keep'e!</div>
+            </div>
+            <div class="chat-input">
+                <input type="text" id="chatInput" placeholder="Mesaj yazın... (Enter)" maxlength="100">
+            </div>
+        </div>
+        
+        <!-- Inventory (Hidden by default) -->
+        <div class="inventory" id="inventory">
+            <h3 style="color: #d4af37; margin-bottom: 10px;">Envanter (I)</h3>
+            <div class="inventory-grid" id="inventoryGrid"></div>
+        </div>
+    </div>
+    
+    <script>
+        // Wait for DOM and Babylon.js to load
+        window.addEventListener('DOMContentLoaded', function() {
+            if (typeof BABYLON === 'undefined') {
+                document.body.innerHTML = '<div style="color:white;padding:20px;background:#000;">Babylon.js yüklenmedi. Sayfayı yenileyin.</div>';
+                return;
+            }
+            
+            initGame();
+        });
+        
+        function initGame() {
+            // ADIM 1-2: Profesyonel Kamera ve Click-to-Move
+            const canvas = document.getElementById('canvas');
+            const engine = new BABYLON.Engine(canvas, true, { preserveDrawingBuffer: true, stencil: true });
+        
+        let scene, camera, player, ground;
+        let playerStats = {
+            hp: 100, maxHp: 100,
+            mp: 50, maxMp: 50,
+            level: 1, xp: 0, maxXp: 100,
+            gold: 0,
+            class: 'Warrior'
+        };
+        
+        // Create Scene
+        function createScene() {
+            scene = new BABYLON.Scene(engine);
+            scene.clearColor = new BABYLON.Color3(0.5, 0.8, 0.9);
+            
+            // ADIM 1: Profesyonel Kamera - WASD hareket AYRI, Fare rotate AYRI
+            camera = new BABYLON.ArcRotateCamera("camera", -Math.PI / 2, Math.PI / 3, 20, BABYLON.Vector3.Zero(), scene);
+            camera.lowerRadiusLimit = 10;
+            camera.upperRadiusLimit = 50;
+            camera.lowerBetaLimit = 0.1;
+            camera.upperBetaLimit = Math.PI / 2.2;
+            
+            // Mouse ile SADECE rotate (WASD hareket etmez)
+            camera.attachControl(canvas, true);
+            camera.inputs.attached.keyboard.detachControl(); // WASD'yi kameradan ayır
+            
+            // Lighting
+            const light = new BABYLON.HemisphericLight("light", new BABYLON.Vector3(0, 1, 0), scene);
+            light.intensity = 0.7;
+            
+            const dirLight = new BABYLON.DirectionalLight("dirLight", new BABYLON.Vector3(-1, -2, -1), scene);
+            dirLight.position = new BABYLON.Vector3(20, 40, 20);
+            dirLight.intensity = 0.5;
+            
+            // Ground
+            ground = BABYLON.MeshBuilder.CreateGround("ground", { width: 200, height: 200, subdivisions: 50 }, scene);
+            const groundMat = new BABYLON.StandardMaterial("groundMat", scene);
+            groundMat.diffuseColor = new BABYLON.Color3(0.3, 0.6, 0.3);
+            ground.material = groundMat;
+            
+            // Player
+            player = BABYLON.MeshBuilder.CreateCapsule("player", { radius: 0.5, height: 2 }, scene);
+            player.position.y = 1;
+            const playerMat = new BABYLON.StandardMaterial("playerMat", scene);
+            playerMat.diffuseColor = new BABYLON.Color3(1, 0.5, 0);
+            player.material = playerMat;
+            
+            // Camera follows player
+            camera.lockedTarget = player;
+            
+            // ADIM 2: Click-to-Move (Silkroad tarzı)
+            setupClickToMove();
+            
+            // WASD Movement
+            setupWASDMovement();
+            
+            // Generate inventory slots
+            generateInventory();
+            
+            return scene;
+        }
+        
+        // ADIM 2: Click-to-Move Implementation
+        let moveTarget = null;
+        let isMoving = false;
+        const moveSpeed = 0.15;
+        
+        function setupClickToMove() {
+            scene.onPointerDown = function(evt, pickResult) {
+                if (evt.button === 0 && pickResult.hit && pickResult.pickedMesh === ground) {
+                    moveTarget = pickResult.pickedPoint.clone();
+                    moveTarget.y = player.position.y;
+                    isMoving = true;
+                    
+                    // Show click marker
+                    showClickMarker(moveTarget);
+                }
+            };
+        }
+        
+        function showClickMarker(position) {
+            const marker = BABYLON.MeshBuilder.CreateDisc("marker", { radius: 0.5 }, scene);
+            marker.position = position.clone();
+            marker.position.y = 0.1;
+            marker.rotation.x = Math.PI / 2;
+            const mat = new BABYLON.StandardMaterial("markerMat", scene);
+            mat.emissiveColor = new BABYLON.Color3(1, 1, 0);
+            mat.alpha = 0.7;
+            marker.material = mat;
+            
+            setTimeout(() => marker.dispose(), 500);
+        }
+        
+        function updateMovement() {
+            if (isMoving && moveTarget) {
+                const direction = moveTarget.subtract(player.position);
+                const distance = direction.length();
+                
+                if (distance > 0.5) {
+                    direction.normalize();
+                    player.position.addInPlace(direction.scale(moveSpeed));
+                    
+                    // Rotate player to face movement direction
+                    const angle = Math.atan2(direction.x, direction.z);
+                    player.rotation.y = angle;
+                } else {
+                    isMoving = false;
+                    moveTarget = null;
+                }
+            }
+        }
+        
+        // WASD Movement (overrides click-to-move)
+        const keys = {};
+        function setupWASDMovement() {
+            window.addEventListener('keydown', (e) => {
+                keys[e.code] = true;
+                
+                // Skills
+                if (e.code === 'KeyQ') useSkill('attack');
+                if (e.code === 'KeyW' && !keys['KeyW']) useSkill('heal');
+                if (e.code === 'KeyE') useSkill('fireball');
+                if (e.code === 'KeyR') useSkill('shield');
+                if (e.code === 'KeyI') toggleInventory();
+            });
+            
+            window.addEventListener('keyup', (e) => {
+                keys[e.code] = false;
+            });
+        }
+        
+        function updateWASDMovement() {
+            const forward = camera.getForwardRay().direction;
+            forward.y = 0;
+            forward.normalize();
+            const right = BABYLON.Vector3.Cross(forward, BABYLON.Vector3.Up());
+            
+            let moved = false;
+            if (keys['KeyW'] || keys['ArrowUp']) {
+                player.position.addInPlace(forward.scale(moveSpeed));
+                moved = true;
+                isMoving = false; // Cancel click-to-move
+            }
+            if (keys['KeyS'] || keys['ArrowDown']) {
+                player.position.addInPlace(forward.scale(-moveSpeed));
+                moved = true;
+                isMoving = false;
+            }
+            if (keys['KeyA'] || keys['ArrowLeft']) {
+                player.position.addInPlace(right.scale(-moveSpeed));
+                moved = true;
+                isMoving = false;
+            }
+            if (keys['KeyD'] || keys['ArrowRight']) {
+                player.position.addInPlace(right.scale(moveSpeed));
+                moved = true;
+                isMoving = false;
+            }
+            
+            if (moved) {
+                const moveDir = new BABYLON.Vector3(0, 0, 0);
+                if (keys['KeyW']) moveDir.addInPlace(forward);
+                if (keys['KeyS']) moveDir.addInPlace(forward.scale(-1));
+                if (keys['KeyA']) moveDir.addInPlace(right.scale(-1));
+                if (keys['KeyD']) moveDir.addInPlace(right);
+                
+                if (moveDir.length() > 0) {
+                    const angle = Math.atan2(moveDir.x, moveDir.z);
+                    player.rotation.y = angle;
+                }
+            }
+        }
+        
+        // ADIM 3: Character Classes & Stats
+        const characterClasses = {
+            Warrior: { str: 15, int: 5, dex: 10, vit: 12, skills: ['slash', 'charge', 'berserk', 'taunt'] },
+            Mage: { str: 5, int: 15, dex: 8, vit: 8, skills: ['fireball', 'icebolt', 'lightning', 'teleport'] },
+            Archer: { str: 8, int: 7, dex: 15, vit: 10, skills: ['multishot', 'trap', 'eagle', 'poison'] }
+        };
+        
+        playerStats.str = 15;
+        playerStats.int = 5;
+        playerStats.dex = 10;
+        playerStats.vit = 12;
+        
+        // ADIM 7: Equipment System
+        const equipment = {
+            weapon: null,
+            armor: null,
+            helmet: null,
+            boots: null,
+            gloves: null,
+            ring1: null,
+            ring2: null
+        };
+        
+        // ADIM 10: Item Rarity System
+        const itemRarities = {
+            common: { color: '#ffffff', chance: 0.6 },
+            uncommon: { color: '#1eff00', chance: 0.25 },
+            rare: { color: '#0070dd', chance: 0.1 },
+            epic: { color: '#a335ee', chance: 0.04 },
+            legendary: { color: '#ff8000', chance: 0.01 }
+        };
+        
+        // ADIM 20: Skill Cooldown System
+        const skillCooldowns = {};
+        
+        // Skills with cooldowns
+        function useSkill(skillName) {
+            if (skillCooldowns[skillName]) return;
+            
+            switch(skillName) {
+                case 'attack':
+                    if (playerStats.mp >= 5) {
+                        attackNearby(15);
+                        playerStats.mp -= 5;
+                        setCooldown(skillName, 1000);
+                    }
+                    break;
+                case 'heal':
+                    if (playerStats.mp >= 15) {
+                        playerStats.hp = Math.min(playerStats.maxHp, playerStats.hp + 30);
+                        playerStats.mp -= 15;
+                        setCooldown(skillName, 3000);
+                        updateUI();
+                    }
+                    break;
+                case 'fireball':
+                    if (playerStats.mp >= 20) {
+                        attackNearby(40);
+                        playerStats.mp -= 20;
+                        setCooldown(skillName, 2000);
+                    }
+                    break;
+                case 'shield':
+                    if (playerStats.mp >= 10) {
+                        playerStats.mp -= 10;
+                        setCooldown(skillName, 5000);
+                        updateUI();
+                    }
+                    break;
+            }
+        }
+        
+        function setCooldown(skill, time) {
+            skillCooldowns[skill] = true;
+            const btn = document.querySelector(`[data-skill="${skill}"]`);
+            if (btn) btn.classList.add('cooldown');
+            setTimeout(() => {
+                delete skillCooldowns[skill];
+                if (btn) btn.classList.remove('cooldown');
+            }, time);
+        }
+        
+        function attackNearby(damage) {
+            // ADIM 22: Damage Numbers
+            showDamageNumber(damage, player.position);
+        }
+        
+        function showDamageNumber(amount, position) {
+            const div = document.createElement('div');
+            div.style.position = 'absolute';
+            div.style.color = '#ffff00';
+            div.style.fontWeight = 'bold';
+            div.style.fontSize = '20px';
+            div.style.pointerEvents = 'none';
+            div.textContent = '-' + amount;
+            document.body.appendChild(div);
+            
+            const screenPos = BABYLON.Vector3.Project(
+                position,
+                BABYLON.Matrix.Identity(),
+                scene.getTransformMatrix(),
+                camera.viewport.toGlobal(engine.getRenderWidth(), engine.getRenderHeight())
+            );
+            
+            div.style.left = screenPos.x + 'px';
+            div.style.top = screenPos.y + 'px';
+            
+            let offset = 0;
+            const interval = setInterval(() => {
+                offset += 2;
+                div.style.top = (screenPos.y - offset) + 'px';
+                div.style.opacity = 1 - (offset / 50);
+            }, 16);
+            
+            setTimeout(() => {
+                clearInterval(interval);
+                div.remove();
+            }, 800);
+        }
+        
+        // ADIM 9: Inventory System
+        const inventory = [];
+        function generateInventory() {
+            const grid = document.getElementById('inventoryGrid');
+            for (let i = 0; i < 40; i++) {
+                const slot = document.createElement('div');
+                slot.className = 'inventory-slot';
+                slot.dataset.index = i;
+                grid.appendChild(slot);
+            }
+        }
+        
+        function toggleInventory() {
+            document.getElementById('inventory').classList.toggle('active');
+        }
+        
+        // ADIM 11: Loot Drop System
+        function dropLoot(position) {
+            const rarity = getRandomRarity();
+            const item = {
+                name: generateItemName(rarity),
+                rarity: rarity,
+                stats: generateItemStats(rarity),
+                position: position.clone()
+            };
+            
+            const lootMesh = BABYLON.MeshBuilder.CreateBox('loot', {size: 0.5}, scene);
+            lootMesh.position = position.clone();
+            lootMesh.position.y = 0.5;
+            const mat = new BABYLON.StandardMaterial('lootMat', scene);
+            mat.emissiveColor = BABYLON.Color3.FromHexString(itemRarities[rarity].color);
+            lootMesh.material = mat;
+            lootMesh.metadata = item;
+            
+            return lootMesh;
+        }
+        
+        function getRandomRarity() {
+            const rand = Math.random();
+            let cumulative = 0;
+            for (let rarity in itemRarities) {
+                cumulative += itemRarities[rarity].chance;
+                if (rand < cumulative) return rarity;
+            }
+            return 'common';
+        }
+        
+        function generateItemName(rarity) {
+            const prefixes = ['Ancient', 'Blessed', 'Cursed', 'Divine', 'Eternal'];
+            const bases = ['Sword', 'Axe', 'Staff', 'Bow', 'Dagger'];
+            const suffixes = ['of Power', 'of Wisdom', 'of Speed', 'of Life'];
+            
+            if (rarity === 'legendary') {
+                return prefixes[Math.floor(Math.random() * prefixes.length)] + ' ' +
+                       bases[Math.floor(Math.random() * bases.length)] + ' ' +
+                       suffixes[Math.floor(Math.random() * suffixes.length)];
+            }
+            return bases[Math.floor(Math.random() * bases.length)];
+        }
+        
+        function generateItemStats(rarity) {
+            const multiplier = {common: 1, uncommon: 1.5, rare: 2, epic: 3, legendary: 5}[rarity];
+            return {
+                damage: Math.floor(10 * multiplier),
+                defense: Math.floor(5 * multiplier),
+                str: Math.floor(2 * multiplier),
+                int: Math.floor(2 * multiplier)
+            };
+        }
+        
+        // ADIM 15-18: Monster System
+        const monsters = [];
+        const monsterTypes = {
+            slime: { hp: 50, damage: 5, xp: 15, level: 1, color: '#00ff00' },
+            goblin: { hp: 100, damage: 10, xp: 25, level: 3, color: '#90ee90' },
+            orc: { hp: 200, damage: 20, xp: 50, level: 5, color: '#2f4f2f' },
+            boss: { hp: 500, damage: 40, xp: 200, level: 10, color: '#ff0000' }
+        };
+        
+        function spawnMonster(type, position) {
+            const data = monsterTypes[type];
+            const monster = BABYLON.MeshBuilder.CreateBox(type, {size: type === 'boss' ? 3 : 1.5}, scene);
+            monster.position = position.clone();
+            monster.position.y = type === 'boss' ? 1.5 : 0.75;
+            
+            const mat = new BABYLON.StandardMaterial(type + 'Mat', scene);
+            mat.diffuseColor = BABYLON.Color3.FromHexString(data.color);
+            monster.material = mat;
+            
+            monster.metadata = {
+                type: type,
+                hp: data.hp,
+                maxHp: data.hp,
+                damage: data.damage,
+                xp: data.xp,
+                level: data.level,
+                aggroRange: 15,
+                leashRange: 30,
+                spawnPos: position.clone(),
+                target: null
+            };
+            
+            monsters.push(monster);
+            return monster;
+        }
+        
+        // ADIM 17: Aggro & Leash
+        function updateMonsters() {
+            monsters.forEach(monster => {
+                if (!monster.metadata) return;
+                
+                const distToPlayer = BABYLON.Vector3.Distance(monster.position, player.position);
+                const distToSpawn = BABYLON.Vector3.Distance(monster.position, monster.metadata.spawnPos);
+                
+                // Leash - return to spawn if too far
+                if (distToSpawn > monster.metadata.leashRange) {
+                    monster.metadata.target = null;
+                    const dir = monster.metadata.spawnPos.subtract(monster.position).normalize();
+                    monster.position.addInPlace(dir.scale(0.1));
+                    return;
+                }
+                
+                // Aggro
+                if (distToPlayer < monster.metadata.aggroRange) {
+                    monster.metadata.target = player;
+                }
+                
+                // Chase player
+                if (monster.metadata.target && distToPlayer > 2) {
+                    const dir = player.position.subtract(monster.position);
+                    dir.y = 0;
+                    dir.normalize();
+                    monster.position.addInPlace(dir.scale(0.05));
+                    monster.lookAt(player.position);
+                }
+            });
+        }
+        
+        // ADIM 23: Critical Hit System
+        function calculateDamage(baseDamage) {
+            const critChance = playerStats.dex * 0.01;
+            const isCrit = Math.random() < critChance;
+            return {
+                damage: isCrit ? baseDamage * 2 : baseDamage,
+                isCrit: isCrit
+            };
+        }
+        
+        // ADIM 27: Gold System
+        function addGold(amount) {
+            playerStats.gold += amount;
+            document.getElementById('goldText').textContent = playerStats.gold;
+        }
+        
+        // ADIM 4: Terrain with Heightmap
+        function createTerrain() {
+            const terrain = BABYLON.MeshBuilder.CreateGroundFromHeightMap("terrain", 
+                "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
+                { width: 200, height: 200, subdivisions: 100, minHeight: 0, maxHeight: 10 }, scene);
+            return terrain;
+        }
+        
+        // ADIM 5: Minimap Update
+        function updateMinimap() {
+            const minimapCtx = document.getElementById('minimapCanvas').getContext('2d');
+            minimapCtx.fillStyle = '#1a1a1a';
+            minimapCtx.fillRect(0, 0, 196, 196);
+            
+            // Player position
+            const px = (player.position.x + 100) / 200 * 196;
+            const pz = (player.position.z + 100) / 200 * 196;
+            minimapCtx.fillStyle = '#00ff00';
+            minimapCtx.beginPath();
+            minimapCtx.arc(px, pz, 4, 0, Math.PI * 2);
+            minimapCtx.fill();
+            
+            // Monsters
+            monsters.forEach(m => {
+                const mx = (m.position.x + 100) / 200 * 196;
+                const mz = (m.position.z + 100) / 200 * 196;
+                minimapCtx.fillStyle = '#ff0000';
+                minimapCtx.fillRect(mx - 2, mz - 2, 4, 4);
+            });
+        }
+        
+        // ADIM 12-14: NPC & Quest System
+        const npcs = [];
+        const quests = [];
+        
+        function createNPC(name, position, questData) {
+            const npc = BABYLON.MeshBuilder.CreateCylinder(name, {height: 2, diameter: 1}, scene);
+            npc.position = position.clone();
+            npc.position.y = 1;
+            const mat = new BABYLON.StandardMaterial(name + 'Mat', scene);
+            mat.diffuseColor = new BABYLON.Color3(0, 0.5, 1);
+            npc.material = mat;
+            
+            // Quest marker
+            const marker = BABYLON.MeshBuilder.CreatePlane('marker', {size: 0.5}, scene);
+            marker.position = npc.position.clone();
+            marker.position.y = 3;
+            marker.billboardMode = BABYLON.Mesh.BILLBOARDMODE_ALL;
+            const markerMat = new BABYLON.StandardMaterial('markerMat', scene);
+            markerMat.emissiveColor = new BABYLON.Color3(1, 1, 0);
+            marker.material = markerMat;
+            
+            npc.metadata = { name, questData, marker };
+            npcs.push(npc);
+            return npc;
+        }
+        
+        // ADIM 24-25: Buff/Potion System
+        const buffs = [];
+        const potions = { hp: 0, mp: 0 };
+        
+        function usePotion(type) {
+            if (potions[type] > 0) {
+                potions[type]--;
+                if (type === 'hp') {
+                    playerStats.hp = Math.min(playerStats.maxHp, playerStats.hp + 50);
+                } else {
+                    playerStats.mp = Math.min(playerStats.maxMp, playerStats.mp + 30);
+                }
+                updateUI();
+            }
+        }
+        
+        function addBuff(name, duration, effect) {
+            buffs.push({ name, endTime: Date.now() + duration, effect });
+        }
+        
+        function updateBuffs() {
+            const now = Date.now();
+            for (let i = buffs.length - 1; i >= 0; i--) {
+                if (buffs[i].endTime < now) {
+                    buffs.splice(i, 1);
+                }
+            }
+        }
+        
+        // ADIM 36: Respawn System
+        const respawnPoint = new BABYLON.Vector3(0, 1, 0);
+        function respawnPlayer() {
+            player.position = respawnPoint.clone();
+            playerStats.hp = playerStats.maxHp;
+            playerStats.mp = playerStats.maxMp;
+            updateUI();
+        }
+        
+        // ADIM 37: Save/Load System
+        function saveGame() {
+            const saveData = {
+                stats: playerStats,
+                position: { x: player.position.x, y: player.position.y, z: player.position.z },
+                inventory: inventory,
+                equipment: equipment,
+                quests: quests
+            };
+            localStorage.setItem('rpg_save', JSON.stringify(saveData));
+        }
+        
+        function loadGame() {
+            const saved = localStorage.getItem('rpg_save');
+            if (saved) {
+                const data = JSON.parse(saved);
+                Object.assign(playerStats, data.stats);
+                player.position.set(data.position.x, data.position.y, data.position.z);
+                updateUI();
+            }
+        }
+        
+        // ADIM 31: Chat System
+        function sendChat(message) {
+            const div = document.createElement('div');
+            div.textContent = `[${playerStats.class}] ${message}`;
+            div.style.color = '#ffffff';
+            document.getElementById('chatMessages').appendChild(div);
+            document.getElementById('chatMessages').scrollTop = 999999;
+        }
+        
+        document.getElementById('chatInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter' && e.target.value.trim()) {
+                sendChat(e.target.value);
+                e.target.value = '';
+            }
+        });
+        
+        // ADIM 40: Particle Effects
+        function createSkillParticles(position, color) {
+            const particleSystem = new BABYLON.ParticleSystem("particles", 2000, scene);
+            particleSystem.particleTexture = new BABYLON.Texture("https://www.babylonjs-playground.com/textures/flare.png", scene);
+            particleSystem.emitter = position;
+            particleSystem.minEmitBox = new BABYLON.Vector3(-0.5, 0, -0.5);
+            particleSystem.maxEmitBox = new BABYLON.Vector3(0.5, 0, 0.5);
+            particleSystem.color1 = color;
+            particleSystem.color2 = color;
+            particleSystem.colorDead = new BABYLON.Color4(0, 0, 0, 0);
+            particleSystem.minSize = 0.1;
+            particleSystem.maxSize = 0.5;
+            particleSystem.minLifeTime = 0.3;
+            particleSystem.maxLifeTime = 1;
+            particleSystem.emitRate = 100;
+            particleSystem.blendMode = BABYLON.ParticleSystem.BLENDMODE_ONEONE;
+            particleSystem.gravity = new BABYLON.Vector3(0, -9.81, 0);
+            particleSystem.direction1 = new BABYLON.Vector3(-1, 1, -1);
+            particleSystem.direction2 = new BABYLON.Vector3(1, 1, 1);
+            particleSystem.minAngularSpeed = 0;
+            particleSystem.maxAngularSpeed = Math.PI;
+            particleSystem.minEmitPower = 1;
+            particleSystem.maxEmitPower = 3;
+            particleSystem.updateSpeed = 0.005;
+            particleSystem.start();
+            
+            setTimeout(() => particleSystem.dispose(), 1000);
+        }
+        
+        // ADIM 42: Day/Night Cycle
+        let timeOfDay = 12;
+        function updateDayNight() {
+            timeOfDay += 0.01;
+            if (timeOfDay > 24) timeOfDay = 0;
+            
+            const intensity = Math.abs(Math.sin((timeOfDay / 24) * Math.PI));
+            scene.lights.forEach(light => {
+                if (light.name === 'light') light.intensity = 0.3 + intensity * 0.4;
+            });
+        }
+        
+        // Spawn initial monsters
+        for (let i = 0; i < 10; i++) {
+            const angle = Math.random() * Math.PI * 2;
+            const distance = 20 + Math.random() * 30;
+            const pos = new BABYLON.Vector3(
+                Math.cos(angle) * distance,
+                0,
+                Math.sin(angle) * distance
+            );
+            const types = ['slime', 'goblin', 'orc'];
+            spawnMonster(types[Math.floor(Math.random() * types.length)], pos);
+        }
+        
+        // Spawn boss
+        spawnMonster('boss', new BABYLON.Vector3(50, 0, 50));
+        
+        // Spawn NPCs
+        createNPC('Merchant', new BABYLON.Vector3(-10, 0, -10), null);
+        createNPC('Quest Giver', new BABYLON.Vector3(10, 0, -10), { id: 1, name: 'Kill 5 Slimes' });
+        
+        // UI Update function
+        function updateUI() {
+            document.getElementById('hpText').textContent = `${Math.floor(playerStats.hp)}/${playerStats.maxHp}`;
+            document.getElementById('mpText').textContent = `${Math.floor(playerStats.mp)}/${playerStats.maxMp}`;
+            document.getElementById('xpText').textContent = `${playerStats.xp}/${playerStats.maxXp}`;
+            document.getElementById('playerLevel').textContent = playerStats.level;
+            document.getElementById('goldText').textContent = playerStats.gold;
+            
+            document.getElementById('hpBar').style.width = `${(playerStats.hp / playerStats.maxHp) * 100}%`;
+            document.getElementById('mpBar').style.width = `${(playerStats.mp / playerStats.maxMp) * 100}%`;
+            document.getElementById('xpBar').style.width = `${(playerStats.xp / playerStats.maxXp) * 100}%`;
+        }
+        
+        // Init
+        scene = createScene();
+        loadGame();
+        
+        engine.runRenderLoop(() => {
+            updateMovement();
+            updateWASDMovement();
+            updateMonsters();
+            updateBuffs();
+            updateMinimap();
+            updateDayNight();
+            scene.render();
+        });
+        
+        window.addEventListener('resize', () => engine.resize());
+        
+        // ADIM 6,8: Equipment Slots UI
+        function openEquipment() {
+            // Equipment panel will be added to UI
+        }
+        
+        // ADIM 19: Skill Tree System
+        const skillTree = {
+            warrior: {
+                slash: { level: 0, maxLevel: 5, cost: [1,2,3,4,5] },
+                charge: { level: 0, maxLevel: 5, cost: [2,3,4,5,6] },
+                berserk: { level: 0, maxLevel: 3, cost: [3,5,7] }
+            }
+        };
+        
+        function upgradeSkill(skillName) {
+            const skill = skillTree.warrior[skillName];
+            if (skill && skill.level < skill.maxLevel) {
+                const cost = skill.cost[skill.level];
+                if (playerStats.gold >= cost) {
+                    playerStats.gold -= cost;
+                    skill.level++;
+                    updateUI();
+                }
+            }
+        }
+        
+        // ADIM 21: Combo System
+        let comboCount = 0;
+        let lastHitTime = 0;
+        
+        function registerHit() {
+            const now = Date.now();
+            if (now - lastHitTime < 2000) {
+                comboCount++;
+            } else {
+                comboCount = 1;
+            }
+            lastHitTime = now;
+            
+            if (comboCount > 1) {
+                showComboText(comboCount);
+            }
+        }
+        
+        function showComboText(combo) {
+            const div = document.createElement('div');
+            div.style.position = 'absolute';
+            div.style.top = '50%';
+            div.style.left = '50%';
+            div.style.transform = 'translate(-50%, -50%)';
+            div.style.color = '#ff8000';
+            div.style.fontSize = '40px';
+            div.style.fontWeight = 'bold';
+            div.style.pointerEvents = 'none';
+            div.textContent = combo + ' COMBO!';
+            document.body.appendChild(div);
+            setTimeout(() => div.remove(), 1000);
+        }
+        
+        // ADIM 26: Shop/Vendor System
+        const shopItems = [
+            { name: 'HP Potion', price: 10, type: 'hp' },
+            { name: 'MP Potion', price: 15, type: 'mp' },
+            { name: 'Iron Sword', price: 100, type: 'weapon' },
+            { name: 'Leather Armor', price: 150, type: 'armor' }
+        ];
+        
+        function buyItem(itemIndex) {
+            const item = shopItems[itemIndex];
+            if (playerStats.gold >= item.price) {
+                playerStats.gold -= item.price;
+                if (item.type === 'hp') potions.hp++;
+                else if (item.type === 'mp') potions.mp++;
+                updateUI();
+            }
+        }
+        
+        // ADIM 28: Crafting System
+        const recipes = {
+            ironSword: { materials: { iron: 5, wood: 2 }, result: 'Iron Sword' },
+            healthPotion: { materials: { herb: 3 }, result: 'HP Potion' }
+        };
+        
+        const materials = { iron: 0, wood: 0, herb: 0 };
+        
+        function craft(recipeName) {
+            const recipe = recipes[recipeName];
+            let canCraft = true;
+            
+            for (let mat in recipe.materials) {
+                if (materials[mat] < recipe.materials[mat]) {
+                    canCraft = false;
+                    break;
+                }
+            }
+            
+            if (canCraft) {
+                for (let mat in recipe.materials) {
+                    materials[mat] -= recipe.materials[mat];
+                }
+                sendChat(`Crafted: ${recipe.result}`);
+            }
+        }
+        
+        // ADIM 29: Enhancement/Upgrade System
+        function enhanceItem(item) {
+            const enhanceLevel = item.enhance || 0;
+            const cost = 100 * Math.pow(2, enhanceLevel);
+            const successRate = Math.max(0.3, 1 - (enhanceLevel * 0.1));
+            
+            if (playerStats.gold >= cost) {
+                playerStats.gold -= cost;
+                if (Math.random() < successRate) {
+                    item.enhance = enhanceLevel + 1;
+                    sendChat(`Enhancement Success! +${item.enhance}`);
+                } else {
+                    sendChat('Enhancement Failed!');
+                }
+                updateUI();
+            }
+        }
+        
+        // ADIM 30: Party System
+        const party = [];
+        
+        function inviteToParty(playerId) {
+            if (party.length < 4 && !party.includes(playerId)) {
+                party.push(playerId);
+                sendChat(`${playerId} joined the party!`);
+            }
+        }
+        
+        function leaveParty() {
+            party.length = 0;
+            sendChat('Left the party');
+        }
+        
+        // ADIM 32: Friend List
+        const friends = [];
+        
+        function addFriend(playerName) {
+            if (!friends.includes(playerName)) {
+                friends.push(playerName);
+                sendChat(`${playerName} added to friends`);
+            }
+        }
+        
+        // ADIM 33: PvP Arena
+        let pvpMode = false;
+        
+        function togglePvP() {
+            pvpMode = !pvpMode;
+            sendChat(pvpMode ? 'PvP Mode: ON' : 'PvP Mode: OFF');
+        }
+        
+        // ADIM 34: Guild System
+        const guild = { name: null, members: [], level: 1 };
+        
+        function createGuild(name) {
+            guild.name = name;
+            guild.members.push(playerStats.class);
+            sendChat(`Guild "${name}" created!`);
+        }
+        
+        // ADIM 35: Dungeon System
+        const dungeons = {
+            beginner: { level: 1, monsters: 5, boss: 'Goblin King' },
+            intermediate: { level: 5, monsters: 10, boss: 'Orc Warlord' },
+            expert: { level: 10, monsters: 15, boss: 'Dragon' }
+        };
+        
+        function enterDungeon(dungeonName) {
+            const dungeon = dungeons[dungeonName];
+            if (playerStats.level >= dungeon.level) {
+                sendChat(`Entering ${dungeonName} dungeon...`);
+                // Spawn dungeon monsters
+            }
+        }
+        
+        // ADIM 38-39: Sound System (placeholder)
+        const sounds = {
+            attack: new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBSuBzvLZiTYIGGi77eefTRALUKfj8LZjHAU4kdfyy3ksBSR3x/DdkEAKFF606+uoVRQKRp/g8r5sIQUrgc7y2Yk2CBhpu+3nn00QC1Cn4/C2YxwFOJHX8st5LAUkd8fw3ZBACg=='),
+            levelup: new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBSuBzvLZiTYIGGi77eefTRALUKfj8LZjHAU4kdfyy3ksBSR3x/DdkEAKFF606+uoVRQKRp/g8r5sIQUrgc7y2Yk2CBhpu+3nn00QC1Cn4/C2YxwFOJHX8st5LAUkd8fw3ZBACg==')
+        };
+        
+        function playSound(soundName) {
+            if (sounds[soundName]) {
+                sounds[soundName].currentTime = 0;
+                sounds[soundName].play().catch(() => {});
+            }
+        }
+        
+        // ADIM 41: Weather System
+        let weather = 'clear';
+        
+        function changeWeather(newWeather) {
+            weather = newWeather;
+            if (weather === 'rain') {
+                // Add rain particles
+                createWeatherParticles();
+            }
+        }
+        
+        function createWeatherParticles() {
+            const particleSystem = new BABYLON.ParticleSystem("rain", 5000, scene);
+            particleSystem.particleTexture = new BABYLON.Texture("https://www.babylonjs-playground.com/textures/flare.png", scene);
+            particleSystem.emitter = new BABYLON.Vector3(0, 50, 0);
+            particleSystem.minEmitBox = new BABYLON.Vector3(-50, 0, -50);
+            particleSystem.maxEmitBox = new BABYLON.Vector3(50, 0, 50);
+            particleSystem.color1 = new BABYLON.Color4(0.7, 0.8, 1.0, 1.0);
+            particleSystem.color2 = new BABYLON.Color4(0.5, 0.6, 0.8, 1.0);
+            particleSystem.minSize = 0.1;
+            particleSystem.maxSize = 0.3;
+            particleSystem.minLifeTime = 1;
+            particleSystem.maxLifeTime = 2;
+            particleSystem.emitRate = 1000;
+            particleSystem.gravity = new BABYLON.Vector3(0, -20, 0);
+            particleSystem.start();
+        }
+        
+        // ADIM 43: Teleport System
+        const teleportPoints = {
+            town: new BABYLON.Vector3(0, 1, 0),
+            forest: new BABYLON.Vector3(50, 1, 50),
+            dungeon: new BABYLON.Vector3(-50, 1, -50)
+        };
+        
+        function teleport(locationName) {
+            if (teleportPoints[locationName]) {
+                player.position = teleportPoints[locationName].clone();
+                sendChat(`Teleported to ${locationName}`);
+            }
+        }
+        
+        // ADIM 44: Mount System
+        let isMounted = false;
+        let mountSpeed = 0.3;
+        
+        function toggleMount() {
+            isMounted = !isMounted;
+            sendChat(isMounted ? 'Mounted!' : 'Dismounted');
+        }
+        
+        // ADIM 45: Pet System
+        const pets = [];
+        
+        function summonPet(petType) {
+            const pet = BABYLON.MeshBuilder.CreateSphere('pet', {diameter: 0.5}, scene);
+            pet.position = player.position.clone();
+            pet.position.x += 2;
+            const mat = new BABYLON.StandardMaterial('petMat', scene);
+            mat.diffuseColor = new BABYLON.Color3(1, 0.5, 0.8);
+            pet.material = mat;
+            pets.push(pet);
+            sendChat(`${petType} pet summoned!`);
+        }
+        
+        function updatePets() {
+            pets.forEach(pet => {
+                const dir = player.position.subtract(pet.position);
+                if (dir.length() > 3) {
+                    dir.normalize();
+                    pet.position.addInPlace(dir.scale(0.1));
+                }
+            });
+        }
+        
+        // ADIM 46: Achievement System
+        const achievements = {
+            firstKill: { unlocked: false, name: 'First Blood' },
+            level10: { unlocked: false, name: 'Veteran' },
+            richPlayer: { unlocked: false, name: 'Wealthy' }
+        };
+        
+        function checkAchievements() {
+            if (!achievements.firstKill.unlocked && comboCount > 0) {
+                achievements.firstKill.unlocked = true;
+                sendChat('🏆 Achievement: First Blood!');
+            }
+            if (!achievements.level10.unlocked && playerStats.level >= 10) {
+                achievements.level10.unlocked = true;
+                sendChat('🏆 Achievement: Veteran!');
+            }
+            if (!achievements.richPlayer.unlocked && playerStats.gold >= 1000) {
+                achievements.richPlayer.unlocked = true;
+                sendChat('🏆 Achievement: Wealthy!');
+            }
+        }
+        
+        // ADIM 47: Leaderboard
+        const leaderboard = [];
+        
+        function updateLeaderboard() {
+            leaderboard.push({ name: playerStats.class, level: playerStats.level, gold: playerStats.gold });
+            leaderboard.sort((a, b) => b.level - a.level);
+            leaderboard.splice(10); // Keep top 10
+        }
+        
+        // ADIM 48: Tutorial System
+        let tutorialStep = 0;
+        const tutorialMessages = [
+            'Welcome! Use WASD to move',
+            'Click on ground to move (Silkroad style)',
+            'Press Q,W,E,R for skills',
+            'Press I for inventory',
+            'Kill monsters to gain XP and level up!'
+        ];
+        
+        function showTutorial() {
+            if (tutorialStep < tutorialMessages.length) {
+                sendChat('📖 ' + tutorialMessages[tutorialStep]);
+                tutorialStep++;
+            }
+        }
+        
+        // ADIM 49: Settings Menu
+        const settings = {
+            graphics: 'high',
+            soundVolume: 0.5,
+            musicVolume: 0.3,
+            showDamageNumbers: true,
+            autoLoot: false
+        };
+        
+        function updateSettings(key, value) {
+            settings[key] = value;
+            localStorage.setItem('rpg_settings', JSON.stringify(settings));
+        }
+        
+        function loadSettings() {
+            const saved = localStorage.getItem('rpg_settings');
+            if (saved) {
+                Object.assign(settings, JSON.parse(saved));
+            }
+        }
+        
+        // ADIM 50: Performance Optimization
+        scene.autoClear = false;
+        scene.autoClearDepthAndStencil = false;
+        scene.blockMaterialDirtyMechanism = true;
+        
+        // Frustum culling
+        scene.freezeActiveMeshes();
+        
+        // LOD system
+        function setupLOD() {
+            monsters.forEach(monster => {
+                const distance = BABYLON.Vector3.Distance(monster.position, player.position);
+                if (distance > 50) {
+                    monster.setEnabled(false);
+                } else {
+                    monster.setEnabled(true);
+                }
+            });
+        }
+        
+        // Show tutorial on first load
+        setTimeout(() => showTutorial(), 1000);
+        
+        // Auto-save every 30 seconds
+        setInterval(saveGame, 30000);
+        
+        // Update achievements every 5 seconds
+        setInterval(checkAchievements, 5000);
+        
+        // Update leaderboard every minute
+        setInterval(updateLeaderboard, 60000);
+        
+        // Performance optimization every frame
+        scene.registerBeforeRender(() => {
+            setupLOD();
+            updatePets();
+        });
+        
+        } // End of initGame function
+    </script>
+</body>
+</html>
