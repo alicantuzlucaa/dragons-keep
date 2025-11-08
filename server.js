@@ -24,13 +24,18 @@ app.use('/peerjs', peerServer);
 
 // Store active rooms and users
 const rooms = new Map();
-const users = new Map();
+const socketUsers = new Map();
 
 // Serve static files from the root directory
 app.use(express.static(__dirname));
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
 // Serve assets from src directory
 app.use('/src', express.static(path.join(__dirname, 'src')));
+
+// In-memory user database (Render'da çalışır)
+const registeredUsers = new Map();
 
 // Routes
 app.get('/', (req, res) => {
@@ -94,6 +99,70 @@ app.get('/screen-share-pro', (req, res) => {
 
 app.get('/screen-share-final', (req, res) => {
     res.sendFile(path.join(__dirname, 'src', 'pages', 'screen-share-final.html'));
+});
+
+app.get('/login', (req, res) => {
+    res.sendFile(path.join(__dirname, 'src', 'pages', 'login.html'));
+});
+
+// AUTH API ENDPOINTS
+app.post('/api/auth/register', (req, res) => {
+    const { username, email, password } = req.body;
+    
+    if (!username || !email || !password) {
+        return res.status(400).json({ message: 'Tüm alanlar gerekli!' });
+    }
+    
+    if (registeredUsers.has(username.toLowerCase())) {
+        return res.status(400).json({ message: 'Bu kullanıcı adı zaten kullanılıyor!' });
+    }
+    
+    // Basit şifreleme (production'da bcrypt kullanın)
+    const user = {
+        username,
+        email,
+        password: Buffer.from(password).toString('base64'),
+        createdAt: new Date()
+    };
+    
+    registeredUsers.set(username.toLowerCase(), user);
+    
+    console.log(`New user registered: ${username}`);
+    res.json({ message: 'Kayıt başarılı!', success: true });
+});
+
+app.post('/api/auth/login', (req, res) => {
+    const { username, password } = req.body;
+    
+    if (!username || !password) {
+        return res.status(400).json({ message: 'Kullanıcı adı ve şifre gerekli!' });
+    }
+    
+    const user = registeredUsers.get(username.toLowerCase());
+    
+    if (!user) {
+        return res.status(401).json({ message: 'Kullanıcı bulunamadı!' });
+    }
+    
+    const decodedPassword = Buffer.from(user.password, 'base64').toString();
+    
+    if (decodedPassword !== password) {
+        return res.status(401).json({ message: 'Şifre yanlış!' });
+    }
+    
+    // Basit token (production'da JWT kullanın)
+    const token = Buffer.from(`${username}:${Date.now()}`).toString('base64');
+    
+    console.log(`User logged in: ${username}`);
+    res.json({ 
+        message: 'Giriş başarılı!',
+        success: true,
+        token,
+        user: {
+            username: user.username,
+            email: user.email
+        }
+    });
 });
 
 // Test route
