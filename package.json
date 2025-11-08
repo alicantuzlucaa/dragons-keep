@@ -2,6 +2,7 @@
   "name": "dragons-keep",
   "version": "1.0.0",
   "description": "Dragon's Keep - Windows Gaming & Screen Sharing Application",
+  "author": "Dragon's Keep Team",
   "main": "main.js",
   "homepage": "./",
   "scripts": {
