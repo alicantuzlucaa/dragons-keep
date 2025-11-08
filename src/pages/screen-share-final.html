@@ -365,7 +365,10 @@
             updateStatus('Hazır - Ekran paylaşımı başlatmak için butona tıklayın', 'success');
             
             // Event listeners
-            startBtn.addEventListener('click', showPermissionModal);
+            startBtn.addEventListener('click', () => {
+                // Direkt izin iste - modal gösterme
+                requestPermissions();
+            });
             micBtn.addEventListener('click', toggleMicrophone);
             audioBtn.addEventListener('click', toggleAudio);
             stopBtn.addEventListener('click', stopSharing);
@@ -407,6 +410,10 @@
         
         function showPermissionModal() {
             permissionModal.classList.add('active');
+            // Modal açılır açılmaz izinleri iste
+            setTimeout(() => {
+                requestPermissions();
+            }, 500);
         }
         
         function closeModal() {
@@ -415,11 +422,13 @@
         
         async function requestPermissions() {
             closeModal();
-            updateStatus('İzinler isteniyor...', 'warning');
+            updateStatus('🎤 MİKROFON İZNİ İSTENİYOR...', 'warning');
+            addMessage('Sistem', '⚠️ TARAYICI MİKROFON İZNİ İSTEYECEK!');
+            addMessage('Sistem', '👉 Lütfen "İZİN VER" veya "ALLOW" butonuna tıklayın!');
             
             try {
-                // 1. ÖNCE MİKROFON İZNİ İSTE - AÇIKÇA SOR
-                addMessage('Sistem', '🎤 MİKROFON İZNİ İSTENİYOR - Lütfen İZİN VER\'e tıklayın!');
+                // 1. ÖNCE MİKROFON İZNİ İSTE - ZORUNLU
+                console.log('🎤 Mikrofon izni isteniyor...');
                 
                 const audioStream = await navigator.mediaDevices.getUserMedia({
                     audio: {
@@ -429,8 +438,6 @@
                         sampleRate: 48000
                     },
                     video: false
-                }).catch(err => {
-                    throw new Error('Mikrofon izni reddedildi! Lütfen tarayıcı ayarlarından mikrofon iznini verin.');
                 });
                 
                 addMessage('Sistem', '✅ Mikrofon izni verildi!');
@@ -439,7 +446,10 @@
                 micBtn.innerHTML = '<i class="fas fa-microphone"></i> Mikrofon Açık';
                 
                 // 2. SONRA EKRAN PAYLAŞIMI İZNİ İSTE
-                addMessage('Sistem', '🖥️ EKRAN PAYLAŞIMI İZNİ İSTENİYOR - Ekranınızı seçin!');
+                updateStatus('🖥️ EKRAN PAYLAŞIMI İZNİ İSTENİYOR...', 'warning');
+                addMessage('Sistem', '🖥️ EKRAN PAYLAŞIMI İZNİ İSTENİYOR!');
+                addMessage('Sistem', '👉 Ekranınızı seçin ve "PAYLAŞ" butonuna tıklayın!');
+                console.log('🖥️ Ekran paylaşımı izni isteniyor...');
                 
                 const screenStream = await navigator.mediaDevices.getDisplayMedia({
                     video: {
@@ -456,10 +466,6 @@
                         autoGainControl: true,
                         sampleRate: 48000
                     }
-                }).catch(err => {
-                    // Mikrofon stream'ini durdur
-                    audioStream.getTracks().forEach(track => track.stop());
-                    throw new Error('Ekran paylaşımı izni reddedildi!');
                 });
                 
                 addMessage('Sistem', '✅ Ekran paylaşımı izni verildi!');
@@ -524,10 +530,26 @@
                 initiateCall();
                 
             } catch (err) {
-                console.error('İzin hatası:', err);
-                updateStatus('❌ Hata: ' + err.message, 'error');
-                addMessage('Sistem', '❌ HATA: ' + err.message);
-                addMessage('Sistem', '💡 Tarayıcı ayarlarından mikrofon ve ekran izinlerini kontrol edin!');
+                console.error('❌ İzin hatası:', err);
+                updateStatus('❌ İzin Reddedildi!', 'error');
+                
+                if (err.name === 'NotAllowedError' || err.message.includes('Permission denied')) {
+                    addMessage('Sistem', '❌ İZİN REDDEDİLDİ!');
+                    addMessage('Sistem', '🔧 Tarayıcı ayarlarından izin verin:');
+                    addMessage('Sistem', '1️⃣ Adres çubuğundaki kilit ikonuna tıklayın');
+                    addMessage('Sistem', '2️⃣ Mikrofon ve Kamera izinlerini "İzin Ver" yapın');
+                    addMessage('Sistem', '3️⃣ Sayfayı yenileyin ve tekrar deneyin');
+                } else if (err.name === 'NotFoundError') {
+                    addMessage('Sistem', '❌ Mikrofon veya kamera bulunamadı!');
+                    addMessage('Sistem', '🔌 Cihazınızın bağlı olduğundan emin olun');
+                } else {
+                    addMessage('Sistem', '❌ HATA: ' + err.message);
+                }
+                
+                // Mikrofon stream'i varsa durdur
+                if (typeof audioStream !== 'undefined' && audioStream) {
+                    audioStream.getTracks().forEach(track => track.stop());
+                }
             }
         }
         
@@ -587,20 +609,35 @@
         
         function toggleMicrophone() {
             if (!localStream) {
-                // Mikrofon yoksa aç
+                // Mikrofon yoksa aç - İZLEYİCİ İÇİN
+                addMessage('Sistem', '⚠️ MİKROFON İZNİ İSTENİYOR!');
+                addMessage('Sistem', '👉 Lütfen "İZİN VER" butonuna tıklayın!');
+                console.log('🎤 İzleyici mikrofon izni isteniyor...');
+                
                 navigator.mediaDevices.getUserMedia({
                     audio: {
                         echoCancellation: true,
                         noiseSuppression: true,
-                        autoGainControl: true
-                    }
+                        autoGainControl: true,
+                        sampleRate: 48000
+                    },
+                    video: false
                 }).then(stream => {
+                    localStream = stream;
                     isMicOn = true;
                     micBtn.classList.add('active');
                     micBtn.innerHTML = '<i class="fas fa-microphone"></i> Mikrofon Açık';
-                    addMessage('Sistem', '🎤 Mikrofon açıldı - Konuşabilirsiniz!');
+                    addMessage('Sistem', '✅ Mikrofon izni verildi!');
+                    addMessage('Sistem', '🎤 Mikrofon açık - Konuşabilirsiniz!');
+                    
+                    // Peer varsa stream'i güncelle
+                    if (peer) {
+                        peer.addStream(stream);
+                    }
                 }).catch(err => {
+                    console.error('❌ Mikrofon izni hatası:', err);
                     addMessage('Sistem', '❌ Mikrofon izni reddedildi!');
+                    addMessage('Sistem', '🔧 Tarayıcı ayarlarından mikrofon iznini verin');
                 });
                 return;
             }
