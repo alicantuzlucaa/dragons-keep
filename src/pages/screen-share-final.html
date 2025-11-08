@@ -107,6 +107,31 @@
             width: 100%;
             height: 100%;
             object-fit: contain;
+            cursor: pointer;
+        }
+        .video-container.fullscreen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 9999;
+            grid-column: 1 / -1;
+        }
+        .fullscreen-btn {
+            position: absolute;
+            bottom: 10px;
+            right: 10px;
+            background: rgba(0,0,0,0.7);
+            border: 1px solid #d4af37;
+            color: #d4af37;
+            padding: 8px 12px;
+            border-radius: 5px;
+            cursor: pointer;
+            z-index: 10;
+        }
+        .fullscreen-btn:hover {
+            background: rgba(212,175,55,0.3);
         }
         .video-label {
             position: absolute;
@@ -262,12 +287,18 @@
         <div class="main-content">
             <div class="video-section">
                 <div class="video-grid">
-                    <div class="video-container">
+                    <div class="video-container" id="localContainer">
                         <div class="video-label">📺 Benim Ekranım</div>
+                        <button class="fullscreen-btn" onclick="toggleFullscreen('local')">
+                            <i class="fas fa-expand"></i>
+                        </button>
                         <video id="localVideo" autoplay muted playsinline></video>
                     </div>
-                    <div class="video-container">
+                    <div class="video-container" id="remoteContainer">
                         <div class="video-label">📺 Uzak Ekran</div>
+                        <button class="fullscreen-btn" onclick="toggleFullscreen('remote')">
+                            <i class="fas fa-expand"></i>
+                        </button>
                         <video id="remoteVideo" autoplay playsinline></video>
                     </div>
                 </div>
@@ -387,48 +418,63 @@
             updateStatus('İzinler isteniyor...', 'warning');
             
             try {
-                // 1. ÖNCE MİKROFON İZNİ İSTE
-                addMessage('Sistem', '🎤 Mikrofon izni isteniyor...');
+                // 1. ÖNCE MİKROFON İZNİ İSTE - AÇIKÇA SOR
+                addMessage('Sistem', '🎤 MİKROFON İZNİ İSTENİYOR - Lütfen İZİN VER\'e tıklayın!');
+                
                 const audioStream = await navigator.mediaDevices.getUserMedia({
                     audio: {
                         echoCancellation: true,
                         noiseSuppression: true,
                         autoGainControl: true,
                         sampleRate: 48000
-                    }
+                    },
+                    video: false
+                }).catch(err => {
+                    throw new Error('Mikrofon izni reddedildi! Lütfen tarayıcı ayarlarından mikrofon iznini verin.');
                 });
                 
                 addMessage('Sistem', '✅ Mikrofon izni verildi!');
                 isMicOn = true;
                 micBtn.classList.add('active');
+                micBtn.innerHTML = '<i class="fas fa-microphone"></i> Mikrofon Açık';
                 
                 // 2. SONRA EKRAN PAYLAŞIMI İZNİ İSTE
-                addMessage('Sistem', '🖥️ Ekran paylaşımı izni isteniyor...');
+                addMessage('Sistem', '🖥️ EKRAN PAYLAŞIMI İZNİ İSTENİYOR - Ekranınızı seçin!');
+                
                 const screenStream = await navigator.mediaDevices.getDisplayMedia({
                     video: {
                         cursor: 'always',
                         displaySurface: 'monitor',
                         logicalSurface: true,
-                        width: { ideal: 1920 },
-                        height: { ideal: 1080 },
-                        frameRate: { ideal: 30 }
+                        width: { ideal: 1920, max: 1920 },
+                        height: { ideal: 1080, max: 1080 },
+                        frameRate: { ideal: 30, max: 60 }
                     },
                     audio: {
                         echoCancellation: true,
                         noiseSuppression: true,
+                        autoGainControl: true,
                         sampleRate: 48000
                     }
+                }).catch(err => {
+                    // Mikrofon stream'ini durdur
+                    audioStream.getTracks().forEach(track => track.stop());
+                    throw new Error('Ekran paylaşımı izni reddedildi!');
                 });
                 
                 addMessage('Sistem', '✅ Ekran paylaşımı izni verildi!');
                 
-                // 3. SESLERİ BİRLEŞTİR
-                const audioContext = new AudioContext();
+                // 3. SESLERİ BİRLEŞTİR - Web Audio API
+                const audioContext = new (window.AudioContext || window.webkitAudioContext)();
                 const destination = audioContext.createMediaStreamDestination();
                 
                 // Mikrofon sesini ekle
                 const micSource = audioContext.createMediaStreamSource(audioStream);
-                micSource.connect(destination);
+                const micGain = audioContext.createGain();
+                micGain.gain.value = 1.0; // Mikrofon ses seviyesi
+                micSource.connect(micGain);
+                micGain.connect(destination);
+                addMessage('Sistem', '✅ Mikrofon sesi eklendi!');
                 
                 // Ekran sesini ekle (varsa)
                 const screenAudioTracks = screenStream.getAudioTracks();
@@ -436,8 +482,13 @@
                     const screenAudioSource = audioContext.createMediaStreamSource(
                         new MediaStream(screenAudioTracks)
                     );
-                    screenAudioSource.connect(destination);
+                    const screenGain = audioContext.createGain();
+                    screenGain.gain.value = 1.0; // Ekran ses seviyesi
+                    screenAudioSource.connect(screenGain);
+                    screenGain.connect(destination);
                     addMessage('Sistem', '✅ Sistem sesi eklendi!');
+                } else {
+                    addMessage('Sistem', '⚠️ Sistem sesi yok (sadece mikrofon)');
                 }
                 
                 // 4. FİNAL STREAM OLUŞTUR
@@ -446,18 +497,28 @@
                     ...destination.stream.getAudioTracks()
                 ]);
                 
+                // Orijinal stream'leri sakla (kapatmak için)
+                localStream._originalAudioStream = audioStream;
+                localStream._originalScreenStream = screenStream;
+                localStream._audioContext = audioContext;
+                
                 localVideo.srcObject = localStream;
+                localVideo.volume = 0; // Kendi sesimizi duymayalım
+                
                 isScreenSharing = true;
-                startBtn.textContent = '✅ Paylaşım Aktif';
+                startBtn.innerHTML = '<i class="fas fa-check"></i> Paylaşım Aktif';
                 startBtn.classList.add('active');
+                startBtn.disabled = true;
                 
                 // Ekran paylaşımı durduğunda
                 screenStream.getVideoTracks()[0].onended = () => {
+                    addMessage('Sistem', '⚠️ Ekran paylaşımı durduruldu');
                     stopSharing();
                 };
                 
-                updateStatus('✅ Ekran ve ses paylaşılıyor!', 'success');
+                updateStatus('✅ Ekran ve ses paylaşılıyor! Mikrofon AÇIK!', 'success');
                 addMessage('Sistem', '🎉 Ekran paylaşımı başarıyla başlatıldı!');
+                addMessage('Sistem', '🎤 Mikrofon aktif - Konuşabilirsiniz!');
                 
                 // Peer bağlantısı kur
                 initiateCall();
@@ -465,7 +526,8 @@
             } catch (err) {
                 console.error('İzin hatası:', err);
                 updateStatus('❌ Hata: ' + err.message, 'error');
-                addMessage('Sistem', '❌ İzin verilmedi: ' + err.message);
+                addMessage('Sistem', '❌ HATA: ' + err.message);
+                addMessage('Sistem', '💡 Tarayıcı ayarlarından mikrofon ve ekran izinlerini kontrol edin!');
             }
         }
         
@@ -524,18 +586,81 @@
         }
         
         function toggleMicrophone() {
-            if (localStream) {
-                isMicOn = !isMicOn;
-                localStream.getAudioTracks().forEach(track => {
+            if (!localStream) {
+                // Mikrofon yoksa aç
+                navigator.mediaDevices.getUserMedia({
+                    audio: {
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                        autoGainControl: true
+                    }
+                }).then(stream => {
+                    isMicOn = true;
+                    micBtn.classList.add('active');
+                    micBtn.innerHTML = '<i class="fas fa-microphone"></i> Mikrofon Açık';
+                    addMessage('Sistem', '🎤 Mikrofon açıldı - Konuşabilirsiniz!');
+                }).catch(err => {
+                    addMessage('Sistem', '❌ Mikrofon izni reddedildi!');
+                });
+                return;
+            }
+            
+            // Mikrofon varsa aç/kapat
+            isMicOn = !isMicOn;
+            if (localStream._originalAudioStream) {
+                localStream._originalAudioStream.getAudioTracks().forEach(track => {
                     track.enabled = isMicOn;
                 });
-                micBtn.classList.toggle('active', isMicOn);
-                micBtn.innerHTML = isMicOn ? 
-                    '<i class="fas fa-microphone"></i> Mikrofon' : 
-                    '<i class="fas fa-microphone-slash"></i> Mikrofon Kapalı';
-                addMessage('Sistem', `Mikrofon ${isMicOn ? 'açıldı' : 'kapatıldı'}`);
+            }
+            localStream.getAudioTracks().forEach(track => {
+                track.enabled = isMicOn;
+            });
+            
+            micBtn.classList.toggle('active', isMicOn);
+            micBtn.innerHTML = isMicOn ? 
+                '<i class="fas fa-microphone"></i> Mikrofon Açık' : 
+                '<i class="fas fa-microphone-slash"></i> Mikrofon Kapalı';
+            addMessage('Sistem', `🎤 Mikrofon ${isMicOn ? 'açıldı' : 'kapatıldı'}`);
+        }
+        
+        function toggleFullscreen(type) {
+            const container = type === 'local' ? 
+                document.getElementById('localContainer') : 
+                document.getElementById('remoteContainer');
+            const video = type === 'local' ? localVideo : remoteVideo;
+            
+            if (!container.classList.contains('fullscreen')) {
+                // Tam ekran yap
+                container.classList.add('fullscreen');
+                if (video.requestFullscreen) {
+                    video.requestFullscreen();
+                } else if (video.webkitRequestFullscreen) {
+                    video.webkitRequestFullscreen();
+                } else if (video.msRequestFullscreen) {
+                    video.msRequestFullscreen();
+                }
+                addMessage('Sistem', '🖥️ Tam ekran modu');
+            } else {
+                // Tam ekrandan çık
+                container.classList.remove('fullscreen');
+                if (document.exitFullscreen) {
+                    document.exitFullscreen();
+                } else if (document.webkitExitFullscreen) {
+                    document.webkitExitFullscreen();
+                } else if (document.msExitFullscreen) {
+                    document.msExitFullscreen();
+                }
+                addMessage('Sistem', '🖥️ Normal ekran modu');
             }
         }
+        
+        // Fullscreen değişikliklerini dinle
+        document.addEventListener('fullscreenchange', () => {
+            if (!document.fullscreenElement) {
+                document.getElementById('localContainer').classList.remove('fullscreen');
+                document.getElementById('remoteContainer').classList.remove('fullscreen');
+            }
+        });
         
         function toggleAudio() {
             isAudioOn = !isAudioOn;
@@ -549,6 +674,17 @@
         
         function stopSharing() {
             if (localStream) {
+                // Orijinal stream'leri durdur
+                if (localStream._originalAudioStream) {
+                    localStream._originalAudioStream.getTracks().forEach(track => track.stop());
+                }
+                if (localStream._originalScreenStream) {
+                    localStream._originalScreenStream.getTracks().forEach(track => track.stop());
+                }
+                if (localStream._audioContext) {
+                    localStream._audioContext.close();
+                }
+                
                 localStream.getTracks().forEach(track => track.stop());
                 localStream = null;
             }
@@ -560,11 +696,13 @@
             remoteVideo.srcObject = null;
             isScreenSharing = false;
             isMicOn = false;
-            startBtn.textContent = '🖥️ Ekran Paylaşımını Başlat';
+            startBtn.innerHTML = '<i class="fas fa-desktop"></i> Ekran Paylaşımını Başlat';
             startBtn.classList.remove('active');
+            startBtn.disabled = false;
             micBtn.classList.remove('active');
+            micBtn.innerHTML = '<i class="fas fa-microphone"></i> Mikrofon';
             updateStatus('Durduruldu', 'error');
-            addMessage('Sistem', 'Ekran paylaşımı durduruldu');
+            addMessage('Sistem', '⛔ Ekran paylaşımı durduruldu');
         }
         
         function sendMessage() {
